@@ -1,0 +1,43 @@
+(function ($, w, d, r) {
+	if (r.Cookie) return;
+
+	let cookie = function () { };
+	cookie.prototype.set = function (name, value, options) {
+		options = options || {};
+		let expires = options.expires;
+		if (typeof expires === "number" && expires) {
+			let d = new Date();
+			d.setTime(d.getTime() + expires * 1000);
+			expires = options.expires = d;
+		}
+		if (expires && expires.toUTCString) options.expires = expires.toUTCString();
+		if (!options.path) options.path = '/';
+		value = encodeURIComponent(value);
+		let updatedCookie = name + "=" + value;
+		for (let propName in options) {
+			updatedCookie += "; " + propName;
+			let propValue = options[propName];
+			if (propValue !== true) updatedCookie += "=" + propValue;
+		}
+
+		d.cookie = updatedCookie;
+	};
+	cookie.prototype.get = function (name) {
+		let matches = d.cookie.match(new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()\[\]\\\/+^])/g, '\\$1') + "=([^;]*)"));
+		return matches ? decodeURIComponent(matches[1]) : undefined;
+	};
+	cookie.prototype.getAll = function () {
+		let pairs = d.cookie.split(";");
+		let cookies = {};
+		for (let i = 0; i < pairs.length; i++) {
+			let pair = pairs[i].split("=");
+			cookies[pair[0].trim()] = unescape(pair[1]);
+		}
+		return cookies;
+	};
+	cookie.prototype.deleteCookie = function (name) {
+		r.set(name, "", {expires: -1})
+	};
+
+	r.Cookie = new cookie();
+})(jQuery, window, document, window.Fit1CApi = window.Fit1CApi || {});

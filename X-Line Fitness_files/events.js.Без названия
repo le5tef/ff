@@ -1,0 +1,84 @@
+(function ($, w, d, r) {
+	if (r.Events) return;
+
+	let events = function () { };
+	//region Events from browser
+	/** events Cart */
+	events.prototype.checkCart = function () {
+		if (r.getUserToken()) {
+			let obCart = r.Tools.getCartData();
+			if (obCart.setApp && obCart.setApp.active) {
+				obCart.setApp.params.token = r.getUserToken();
+				r.sendShowSetAppBlock(obCart.setApp.params, 'getApp', 'show');
+				r.Tools.removeCartItem('setApp');
+			}
+			if (obCart.getAppRent && obCart.getAppRent.active) {
+				obCart.getAppRent.params.token = r.getUserToken();
+				r.sendShowSetAppBlock(obCart.getAppRent.params, obCart.getAppRent.params.method, 'show');
+				r.Tools.removeCartItem('getAppRent');
+			}
+		}
+	}
+	/** events Query String */
+	events.prototype.checkQueryString = function () {
+		let id = r.Tools.getQueryString('id'), club_id = r.Tools.getQueryString('club_id');
+
+		if (r.Tools.getQueryString('isError') || r.Tools.getQueryString('successPay') || r.Tools.getQueryString('successAutoPay')) r.checkPay(true);
+		else if (r.Tools.getQueryString('page') === 'schedule') r.getCalendarUser();
+		else if (r.Tools.getQueryString('page') === 'shop') r.getPriceList({club_id: r.Tools.getQueryString('club_id')});
+		else if (r.Tools.getQueryString('page') === 'classes') r.getUserApp();
+		else if (r.Tools.getQueryString('page') === 'profile') r.getUserProf();
+		else if (r.Tools.getQueryString('show_pop') === 'auto_pay') r.getAutoPayPop();
+		else if ($(w.Fit.block.userCabinet).length || r.Tools.getQueryString('page') === 'index') r.getUserProfIndex();
+		else if (r.Tools.getQueryString('getFitShopForm') && id) {
+			let $regPay = $('[data-show-reg-pay-form][data-id="' + id + '"]'),$authPay = $('[data-show-auth-pay-form][data-id="' + id + '"]');
+			if ($regPay.length) $regPay[0].click();
+			else if ($authPay.length) $authPay[0].click();
+		}
+
+		if (r.Tools.getQueryString('waiting_record_id')) r.getWaitingRecord({waiting_record_id: r.Tools.getQueryString('waiting_record_id'),});
+		if (r.Tools.getQueryString('shopPayForm') === 'Y') r.getPayForm({id: id, club_id: club_id, type: 'price_list'});
+		if (r.Tools.getQueryString('showAutoPayPop') === 'Y' && r.Tools.getQueryString('getUserProf') === 'Y') r.Cookie.set('Fit_ShowAutoPayPop', 'Y');
+		this.checkAutoPayPop()
+		if (r.Tools.getQueryString('getPayFormDebts') === 'Y') r.getPayFormDebts({'id': r.Tools.getQueryString('id'), 'custom_pay': 'Y'});
+
+		if (id && club_id) {
+			if (r.Tools.getQueryString('getShopFormAuth') === 'Y') r.sendAuthPayFormEvent({id: id, club_id: club_id});
+			if (r.Tools.getQueryString('getShopFormReg') === 'Y') r.sendRegPayFormEvent({id: id, club_id: club_id});
+		}
+
+		if (w.location.hash === '#show-remember') $('[data-show-block="[data-block-remember]"]').trigger('click');
+		if (w.location.hash === '#show-register') $('[data-show-block="[data-block-reg]"]').trigger('click');
+		if (w.location.hash === '#show-remember' || w.location.hash === '#show-register') w.location.hash = '';
+	}
+	/** events History */
+	events.prototype.checkHistory = function () {
+		try {
+			History.Adapter.bind(w, 'statechange', function () { // Note: We are using statechange instead of popstate
+				let State = History.getState(), data = r.Tools.parseQueryString(State.cleanUrl);
+				if (data)
+					if (data.page === 'index') r.getUserProfIndex();
+					else if (data.page === 'schedule') r.getCalendarUser();
+					else if (data.page === 'shop') r.getPriceList({club_id: r.Tools.getQueryString('club_id')});
+					else if (data.page === 'classes') r.getUserApp();
+					else if (data.page === 'profile') r.getUserProf();
+			});
+		} catch (e) {
+			console.log(e);
+		}
+	}
+	//endregion
+
+	events.prototype.checkAutoPayPop = function () {
+		if (r.Tools.getQueryString('showAutoPayPop') === 'Y' || r.Cookie.get('Fit_ShowAutoPayPop') === 'Y') {
+			r.getAutoPayPop();
+			w.history.replaceState({}, d.title, w.location.pathname);
+		}
+	}
+	events.prototype.checkAll = function () {
+		this.checkQueryString()
+		this.checkCart()
+		this.checkHistory()
+	}
+	r.Events = new events();
+})(jQuery, window, document, window.Fit1CApi = window.Fit1CApi || {});

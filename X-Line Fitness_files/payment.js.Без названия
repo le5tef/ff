@@ -1,0 +1,66 @@
+(function ($, w, d, r) {
+	if (r.Payment) return;
+
+	let payment = function () { };
+	payment.prototype.getPayForm = function (params) {
+		let _this = this, dataSend, method = 'getCartCost';
+		dataSend = {
+			token: r.getUserToken(), id: params.id, AppID: params.AppID, AppType: params.AppType, club_id: params.club_id,
+			employee_id: params.trainer_id, promocode: params.promocode, count: params.count, price_type_id: params.price_type_id
+		}
+		if (params.not_set_trainer !== 'Y') dataSend.trainer_id = params.trainer_id;
+		if (params.method) method = params.method;
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: method, params: dataSend,}, function (response) {
+			$(w.Fit.loading.name).removeClass(w.Fit.loading.name);
+			w.history.replaceState({}, document.title, w.location.pathname);
+			if (params.replacePop) params.replacePop.closest('.content_rz2').html(response.Message)
+			else _this.showMessageBlock({response: response, type: 'html'});
+			$('.radio_rz input[type="radio"]').ezMark();
+			_this.eventSetPay();
+		});
+	};
+	payment.prototype.getPayFormDebts = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		if (params.custom_pay === 'Y')
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getDebtPayForm', params: {id: params.id,},}, function (response) {
+				$blockUserCabinet.removeClass(w.Fit.loading.name);
+				w.history.replaceState({}, document.title, w.location.pathname);
+				_this.showMessageBlock({response: response, type: 'html'});
+				_this.eventSetPay();
+			});
+		else
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getCartCostDebts', params: {token: _this.getUserToken(), id: params.id, club_id: params.club_id,},}, function (response) {
+				$blockUserCabinet.removeClass(w.Fit.loading.name);
+				w.history.replaceState({}, document.title, w.location.pathname);
+				_this.showMessageBlock({response: response, type: 'html'});
+				$('.radio_rz input[type="radio"]').ezMark();
+				_this.eventSetPay();
+			});
+	};
+	payment.prototype.getPayFormTrainer = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getPayFormTrainer', params: {token: _this.getUserToken(), id: params.id, club_id: params.club_id,},}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			$('[data-id="' + params.id + '"]').find('[data-block-select-trainer]').html(response.Message).show();
+			$('.radio_rz input[type="radio"]').ezMark();
+			_this.eventSetPay();
+		});
+	};
+	payment.prototype.getPayAddForm = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getPayAddForm', params: params,}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			_this.showMessageBlock({response: response, type: 'html'});
+			_this.eventSetPay();
+			$('[data-pay-form] [data-select-club]').selectbox();
+		});
+	};
+	r.Payment = payment;
+})(jQuery, window, document, window.Fit1CApi = window.Fit1CApi || {});

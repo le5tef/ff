@@ -1,0 +1,38 @@
+(function ($, w, d, r) {
+	if (r.Auth) return;
+
+	let auth = function () { };
+	auth.prototype.logout = function () {
+		let _this = this;
+		_this.setUserToken('');
+		_this.setUserId('');
+		w.location.reload();
+	};
+	auth.prototype.setUserToken = function (userF) {
+		setCookie('Fit.U_TOKEN', userF, {expires: w.Fit.cookie.time});
+		setCookie('Fit.U_TOKEN_MASTER', userF, {expires: w.Fit.cookie.time});
+	};
+	auth.prototype.setUserTokenRelatives = function (userF) {
+		setCookie('Fit.U_TOKEN', userF, {expires: window.Fit.cookie.time});
+	};
+	auth.prototype.setUserId = function (id) {
+		setCookie('Fit.U_ID', id, {expires: window.Fit.cookie.time});
+	};
+	auth.prototype.getUserToken = function () {
+		let token = getCookie('Fit.U_TOKEN');
+		if (typeof token === 'undefined' || token === 'undefined') token = '';
+		return token;
+	};
+	auth.prototype.getUserTokenMaster = function () {
+		let token = getCookie('Fit.U_TOKEN_MASTER');
+		if (typeof token === 'undefined') token = '';
+		return token;
+	};
+	auth.prototype.getUserId = function () {
+		let token = getCookie('Fit.U_ID');
+		if (typeof token === 'undefined') token = '';
+		return token;
+	};
+
+	r.Auth = new auth();
+})(jQuery, window, document, window.Fit1CApi = window.Fit1CApi || {});

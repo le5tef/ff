@@ -1,0 +1,2807 @@
+// import FancyboxFit from "fancybox.fit.min.js";
+/**
+ * @class FancyboxFit
+ * */
+(function (w, d, $, f) {
+	w.console = w.console || {info: function (stuff) {}};
+	if (!$) return;
+	if ($.fit1CApi) {
+		console.info("fit1CApi already initialized");
+
+		return;
+	}
+
+	f.body = $('body')
+	f.cartKey = 'fit-' + w.Fit.salon_id
+	//region Html
+	f.preLoader = '<div class="cssload-loader"></div>'
+	//endregion
+
+	//region Calendar params
+	f.$formFilter = null
+	f.$createPayOrder = null
+	f.$blockUserCabinet = $(w.Fit.block.userCabinet)
+	f.$blockUpdateUser = $(w.Fit.block.userUpdate)
+	f.$formUpdateUser = $(w.Fit.form.userUpdate)
+	f.block = {userCabinet: w.Fit.block.userCabinet}
+	f.jScrollPaneApi = []
+	f.shop = {filter: '[data-shop-filter]',}
+	f.calendar = {scroll: '[data-calendar-scroll]', filter: '[data-calendar-filter]', date: '[data-slider-date]', body: '[data-body-schedule]',}
+	f.isLK = false
+	//endregion
+	f.timerSendSms = null
+
+	f.init = function () {
+		FancyboxFit.defaults.dragToClose = false
+		FancyboxFit.defaults.autoFocus = false
+		FancyboxFit.defaults.touch = false
+		FancyboxFit.defaults.trapFocus = false
+
+		let _this = this;
+
+//region events fit1CApi
+		_this.setMask();
+		_this.setAgreementEvent();
+		_this.setShowEvents();
+		//region Event For auth register
+		//region Register
+		_this.setRegEvent();
+		_this.setRemEvent();
+		//endregion
+		//region Auth
+		_this.setAuthEvent();
+		//endregion
+		//endregion
+		_this.getRegPayFormEvent();
+		_this.getAuthPayFormEvent();
+		_this.eventSetPay();
+//endregion
+
+		_this.Events.checkAll();
+
+//region events Elems
+		_this.body.off('click.link-events-menu').on('click.link-events-menu', '[data-menu-links] [data-page]', function () {
+			let link = w.location.pathname, getParams = [];
+
+			if ($(this).data('page')) {
+				getParams.push('page=' + $(this).data('page'))
+
+				link = link + '?' + getParams.join('&');
+				history.pushState(null, null, link);
+			}
+		});
+		_this.body.off('click.link-events-schedule').on('click.link-events-schedule', '[data-get-calendar-type]', function () {
+			let link = w.location.pathname, getParams = [];
+
+			['page', 'trainer_id', 'service_id',].forEach(function (value) {
+				if (f.Tools.getQueryString(value)) getParams.push(value + '=' + f.Tools.getQueryString(value));
+			});
+			if ($(this).data('get-calendar-type')) getParams.push('type=' + $(this).data('get-calendar-type'));
+
+			if (getParams) {
+				link = link + '?' + getParams.join('&');
+				history.pushState(null, null, link);
+			}
+		});
+		_this.body.off('click.get-user-index').on('click.get-user-index', '[data-get-user-index]', function () {
+			_this.isRegister = false;
+			_this.getUserProfIndex();
+		});
+		_this.body.off('click.get-user-schedule').on('click.get-user-schedule', '[data-get-user-schedule]', function () {
+			_this.getCalendarUser(this);
+		});
+		_this.body.off('click.get-user-profile').on('click.get-user-profile', '[data-get-user-profile]', function () {
+			_this.getUserProf();
+		});
+		_this.body.off('click.get-user-app').on('click.get-user-app', '[data-get-user-app]', function () {
+			_this.getUserApp();
+		});
+		_this.body.off('click.get-price_list').on('click.get-price_list', '[data-get-price_list]', function () {
+			_this.getPriceList({type: $(this).data('get-price_list')});
+		});
+		$(w.Fit.block.head.user_logout).on('click', function () { _this.Auth.logout(); });
+		$(w).resize(function () { _this.resizeSched(); });
+//endregion
+		if (typeof __callAfterFitLoad === 'function') __callAfterFitLoad();
+	}
+	//region Register
+	f.setRegEvent = function () {
+		let _this = this;
+		$(w.Fit.form.reg).unbind().on('submit', function () {
+			let $self = $(this),
+				$blockLogin = $self.find(w.Fit.formFields.regBlock.login),
+				$blockCode = $self.find(w.Fit.formFields.regBlock.code),
+				$inpPhone = $self.find('[data-input-phone]'),
+				$inpSms = $self.find('[data-input-captcha-sms]'),
+				$inpPass = $self.find('[name="PASSWORD"]'), $inpPass2 = $self.find('[name="CONFIRM_PASSWORD"]'),
+				$i_agree = $self.find('[name="i_agree"]'),
+				isError = false;
+
+			_this.clearErrors($self);
+
+			let sPhone = _this.isPhoneFormat($inpPhone.val());
+			if ($blockLogin.is(':visible')) {
+				if (!sPhone) {
+					sPhone = '';
+					isError = true;
+					$inpPhone.addClass('error');
+				}
+
+				//region Check Pass
+				if (
+					$inpPass.val().trim() === '' || $inpPass2.val().trim() === '' ||
+					$inpPass.val().trim() !== $inpPass2.val().trim()
+				) {
+					isError = true;
+					$inpPass.addClass('error');
+					$inpPass2.addClass('error');
+				}
+				//endregion
+				//region I Agree
+				if ($i_agree.length > 0 && !$i_agree.prop('checked')) {
+					isError = true;
+					$i_agree.addClass('error');
+				}
+				//endregion
+
+				if (!isError) {
+					$inpPhone.removeClass('error');
+					_this.regSendSms({method: 'sendRegCode', params: {'login': sPhone, 'pass': $inpPass.val(),}}, $self);
+					return false;
+				}
+			} else if ($blockCode.is(':visible')) _this.checkRegCode({method: 'checkRegCode', params: {'login': sPhone, 'code': $inpSms.val(), 'pass': $inpPass.val(), 'isReg': true,}}, $self);
+
+			if (isError) return false;
+
+			return false;
+		});
+	}
+	f.setRemEvent = function () {
+		let _this = this;
+		_this.body.off('submit').on('submit', w.Fit.form.rem, function () {
+			let $self = $(this), $inpPhoneEmail = $self.find('[data-input-phone]'), $blockRemConfirm = $self.find(w.Fit.formFields.regBlock.remConfirm), retData = {};
+
+			_this.clearErrors($self);
+			retData.phone = $inpPhoneEmail.val().replace(/[^\d*]/gi, '');
+			if (retData.phone) _this.remUser({method: 'sendRegCode', params: {'login': retData.phone, recovery: 'Y'}}, $self, $blockRemConfirm.hasClass(w.Fit.class.hide) ? 1 : 2);
+
+			return false;
+		});
+	}
+	/* Send User Sms Code */
+	f.regSendSms = function (data, $self) {
+		let _this = this;
+
+		let $blockLogin = $self.find(w.Fit.formFields.regBlock.login),
+			$blockCode = $self.find(w.Fit.formFields.regBlock.code),
+			$button = $self.find('button'), buttonLang = $button.data('lang');
+		$self.addClass(w.Fit.loading.name);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, data, function (response) {
+			_this.clearErrors($self);
+			_this.clearMessages($self);
+			if (response.isError === true) {
+				_this.showMessageBlock({response: response, type: null, afterShowFunction: null, hideOther: 'N'});
+				_this.setShowEvents();
+			} else {
+				$blockLogin.addClass(w.Fit.class.hide);
+				$blockCode.removeClass(w.Fit.class.hide);
+				$self.find('[data-success]').html(response.Message);
+				$button.html(buttonLang.code);
+				$self.find(w.Fit.block.agreement).addClass(w.Fit.class.hide);
+			}
+			$self.removeClass(w.Fit.loading.name);
+		});
+	}
+
+	f.checkRegCode = function (data, $self) {
+		let _this = this;
+
+		let $blockUserCabinet = $(_this.block.userCabinet),
+			$blockUserUpdate = $(w.Fit.block.userUpdate),
+			$blockCode = $self.find(w.Fit.formFields.regBlock.code),
+			$blockUserF = $self.find(w.Fit.formFields.regBlock.userF),
+			$button = $self.find('button'), buttonLang = $button.data('lang');
+
+		$self.addClass(w.Fit.loading.name);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, data, function (response) {
+			_this.clearErrors($self);
+			_this.clearMessages($self);
+			if (response.isError === true) $self.find('[data-error]').html(response.Message);
+			else {
+				w.dataLayer.push({'event': 'form_submit', 'formName': 'sms'});
+				w.dataLayer.push({'event': 'form_submit', 'formName': 'reg'});
+
+				$blockCode.addClass(w.Fit.class.hide);
+				$blockUserF.removeClass(w.Fit.class.hide);
+				$button.html(buttonLang.register);
+
+				let obCart = _this.Tools.getCartData();
+				if (obCart.setApp) obCart.setApp.active = 'Y';
+				if (obCart.setAppRental) obCart.setAppRental.active = 'Y';
+				_this.Tools.setCartData(obCart);
+
+				_this.setUserToken(response.user_token);
+				if (response.client) _this.setUserId(response.client.id);
+
+				$blockUserCabinet.html($blockUserUpdate.html());
+				$blockUserCabinet.find('select').selectbox();
+
+				if (data.params.isReg === true && response.new_client === false) {
+					['last_name', 'name', 'second_name', 'birthday'].forEach(function (code) {
+						if (response.client[code]) $blockUserCabinet.find('[name="' + code + '"]').val(response.client[code]).prop('disabled', true);
+					});
+					$blockUserCabinet.find('[name="email"]').val(response.client.email);
+
+					$blockUserCabinet.find('h1').html(response.form.title);
+					$blockUserCabinet.find('input[name="isReg"]').remove();
+				} else $blockUserCabinet.find(w.Fit.form.userUpdate).append(
+					'<input type="hidden" name="password" value="' + data.params.pass + '">'
+					+ '<input type="hidden" name="phone" value="' + data.params.login + '">'
+				);
+
+				_this.setMask();
+
+				_this.setUserData();
+				_this.clearMessages();
+			}
+			$self.removeClass(w.Fit.loading.name);
+		});
+	}
+
+	/* Set User Fields */
+	f.setUserData = function ($formUserData) {
+		let _this = this;
+
+		if (typeof $formUserData === 'undefined') $formUserData = $(w.Fit.form.userUpdate);
+
+		$formUserData.unbind().on('submit', function () {
+			let $self = $(this), $blockSelect = $formUserData.find('[data-block-club] .select'), $select = $formUserData.find('[data-block-club] select'), data = $self.serializeObject();
+
+			if ($select.find('select').length > 0) data.club = $select.find('option:selected:last').val();
+			$blockSelect.removeClass('error');
+			if (data.club === '') {
+				$blockSelect.addClass('error');
+				return false;
+			}
+			data = {method: 'setUserData', params: {arFields: data, token: _this.getUserToken()}};
+			$self.addClass(w.Fit.loading.name);
+
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, data, function (response) {
+				_this.clearErrors($self);
+				_this.clearMessages($self);
+				if (response.isError === true) $self.find('[data-error]').html(response.Message);
+				else {
+					w.dataLayer.push({'event': 'form_submit', 'formName': 'anketa'});
+					_this.setUserToken(response.user_token);
+					_this.setUserId(response.user_id);
+					_this.getUserProfIndex();
+					_this.closePop(true);
+				}
+
+				$self.removeClass(w.Fit.loading.name);
+			});
+			return false;
+		});
+	}
+	//endregion
+
+	/** Agreement event */
+	f.setAgreementEvent = function () {
+		let _this = this;
+
+		_this.body.off('click.agreement').on('click.agreement', '[data-info-agreement]', function () {
+			let $self = $(this);
+			$self.removeClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getAgreement', params: {'noParam': 'Y'}}, function (response) {
+				if (response.isError === true) _this.showMessageBlock({response: response, type: 'html'});
+				else _this.showMessageBlock({response: response, type: 'html'});
+				$self.removeClass(w.Fit.loading.name);
+			});
+
+			return false;
+		});
+
+		_this.body.off('click.get-public-offer').on('click.get-public-offer', '[data-get-public-offer]', function () {
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getPublicOffer', params: {token: _this.getUserToken()},}, function (response) {
+				_this.showMessageBlock({response: response, type: null, afterShowFunction: null, hideOther: 'N'});
+			});
+		});
+
+	}
+
+	//region Auth event
+	f.setAuthEvent = function () {
+		let _this = this;
+		$(w.Fit.form.auth).unbind().on('submit', function () {
+			let $self = $(this),
+				$blockError = $self.find('[data-error]'), $blockSuccess = $self.find('[data-success]'),
+				$inpPhone = $self.find('[data-input-phone]'), $inpPass = $self.find('[data-input-pass]'),
+				isError = false;
+			$self.find('input').removeClass('error');
+
+			if ($self.data('empty-send') === 'Y') return true;
+
+			//region Valid input
+			if ($inpPass.val().trim().length < 4) {
+				isError = true;
+				$inpPass.addClass('error');
+			} else $inpPass.removeClass('error');
+
+			let sPhone = _this.isPhoneFormat($inpPhone.val());
+
+			if (!sPhone) {
+				sPhone = '';
+				isError = true;
+			}
+
+			if (isError) $inpPhone.addClass('error');
+			else $inpPhone.removeClass('error');
+
+			if (isError) return false;
+			//endregion
+
+			$self.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'auth', params: {login: sPhone, pass: $inpPass.val(),}}, function (response) {
+				if (response.isError === true) {
+					$blockError.html(response.Message).show();
+					$blockSuccess.empty().hide();
+				} else {
+					w.dataLayer.push({'event': 'form_submit', 'formName': 'auth'});
+					$blockError.empty().hide();
+					$blockSuccess.html(response.Message).show();
+
+					//region User token
+					_this.setUserToken(response.token);
+					_this.setUserId(response.userF.id);
+					//endregion
+
+					if ($self.data('type') !== 'auth_schedule') {
+						$self.data('empty-send', 'Y');
+						if (w.Tilda) location.href = location.pathname;
+						else $self.submit();
+					} else {
+						_this.closePop(false);
+						let app_id = $self.find('[name="app_id"]').val();
+						if (app_id) setTimeout(function () { $('[data-id="' + app_id + '"]').trigger('click'); }, 100);
+					}
+				}
+				$self.removeClass(w.Fit.loading.name);
+			});
+
+			return false;
+		});
+	}
+	//endregion
+
+	//region Remember pass
+	f.remUser = function (data, $self, step) {
+		let _this = this;
+
+		let $blockLogin = $self.find(w.Fit.formFields.regBlock.login), $blockRemConfirm = $self.find(w.Fit.formFields.regBlock.remConfirm),
+			isError = false;
+		$self.addClass(w.Fit.loading.name);
+
+		if ($self.find('#check-reg').prop('checked') === false) {
+			$self.find('#check-reg').addClass('.error');
+			isError = true;
+		}
+		if (isError) {
+			$self.removeClass(w.Fit.loading.name);
+			return false;
+		}
+
+		if (step === 1) {
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, data, function (response) {
+				_this.clearErrors($self);
+				_this.clearMessages($self);
+				if (response.isError === true) {
+					$self.find('[data-error]').html(response.Message);
+					_this.setShowEvents();
+				} else {
+					$blockLogin.addClass(w.Fit.class.hide);
+					$blockRemConfirm.removeClass(w.Fit.class.hide);
+					$blockRemConfirm.find('[data-success]').html(response.Message);
+				}
+				$self.removeClass(w.Fit.loading.name);
+			});
+		} else if (step === 2) {
+			data.method = 'setNewPass';
+			data.params.pass = $blockRemConfirm.find('[data-input-rem-pass]').val();
+			data.params.pass_2 = $blockRemConfirm.find('[data-input-rem-pass-2]').val();
+			data.params.pass_code = $blockRemConfirm.find('[data-input-rem-pass_code]').val();
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, data, function (response) {
+				_this.clearErrors($self);
+				_this.clearMessages($self);
+				if (response.isError === true) {
+					_this.showMessageBlock({response: response, type: null, afterShowFunction: null, hideOther: 'N'})
+					_this.setShowEvents();
+				} else {
+					$blockLogin.addClass(w.Fit.class.hide);
+					$blockRemConfirm.addClass(w.Fit.class.hide);
+					$self.find('[data-success]').html(response.Message);
+				}
+				$self.removeClass(w.Fit.loading.name);
+			});
+		}
+	}
+	//endregion
+
+	//region Cabinet
+	/** UserIndexPage */
+	f.logout = function () {
+		let _this = this;
+		_this.setUserToken('');
+		_this.setUserId('');
+		w.location.reload();
+	}
+	/** UserIndexPage */
+	f.getUserProfIndex = function () {
+		let _this = this;
+
+		let $blockAuth = $(w.Fit.block.auth), $blockUserCabinet = $(_this.block.userCabinet);
+		$blockUserCabinet.addClass(w.Fit.loading.name).html(_this.preLoader);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+			method: 'getUserProfIndex',
+			params: {club_id: w.Fit.salon_id, token: _this.getUserToken(), token_master: _this.getUserTokenMaster()},
+		}, function (response) {
+			let $blockUserCabinet = $(_this.block.userCabinet);
+
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			if (response.needAuth === true) {
+				if ($blockUserCabinet.length > 0) $blockUserCabinet.html($blockAuth[0]);
+				else _this.showMessageBlock({response: w.Fit.block.auth, type: null, afterShowFunction: clearMessages()});
+			} else {
+				f.Events.checkAutoPayPop();
+				f.Events.checkCart();
+
+				_this.setHtmlUserBlock(response);
+
+				$blockUserCabinet.html(response.Message);
+
+				let elems = Array.prototype.slice.call(d.querySelectorAll('.js-switch'));
+				elems.forEach(function (html) { new Switchery(html); });
+				//region Events
+				_this.showSetApp();
+				$('[data-get-block-update-user]').on('click', function () {
+					$blockUserCabinet.html($blockUpdateUser[0]);
+					_this.eventUpdateUser();
+				});
+				$('[data-add-pay]').on('click', function () {
+					let $self = $(this), $parentBlock = $self.closest('[data-id]'),
+						deposit_id = $parentBlock.data('id'), club_id = $parentBlock.data('club_id'), deposit_name = $parentBlock.data('name');
+					_this.getPayAddForm({token: _this.getUserToken(), deposit_id: deposit_id, club_id: club_id, deposit_name: deposit_name,});
+				});
+				$('[data-get-history-deposit]').on('click', function () {
+					let $self = $(this), option = $self.data('option');
+					_this.getHistoryDeposit({token: _this.getUserToken(), id: option.id, type: option.type,});
+				});
+				$('[data-activation-item]').on('click', function () {
+					let $self = $(this), ticket_id = $self.data('activation-item');
+
+					$self.closest('[data-id]').addClass(w.Fit.loading.name);
+					w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setTicketActive', params: {token: _this.getUserToken(), ticket_id: ticket_id,},}, function (response) {
+						$self.closest('[data-id]').removeClass(w.Fit.loading.name);
+						_this.showMessageBlock({response: response});
+						if (response.isError !== true) _this.getUserProfIndex();
+					});
+					return false;
+				});
+				$('[data-freeze-item], [data-unfreeze-item], [data-cancel_freezing-item]').on('click', function () {
+					let $self = $(this), ticket_id = $self.data('freeze-item'), typeFreeze = 'freeze';
+
+					if ($self.filter('[data-unfreeze-item]').length) {
+						typeFreeze = 'unfreeze';
+						ticket_id = $self.data('unfreeze-item');
+					}
+					if ($self.filter('[data-cancel_freezing-item]').length) {
+						typeFreeze = 'cancel_freezing';
+						ticket_id = $self.data('cancel_freezing-item');
+						_this.setCancelFreeze({ticket_id: ticket_id});
+						return false;
+					}
+
+					$self.closest('[data-id]').addClass(w.Fit.loading.name);
+					w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getFreezeForm', params: {token: _this.getUserToken(), ticket_id: ticket_id, typeFreeze: typeFreeze},}, function (response) {
+						$self.closest('[data-id]').removeClass(w.Fit.loading.name);
+						_this.showMessageBlock({response: response});
+						let $date = $('[data-picker]'), $form = $('[data-freeze-form]');
+
+						_this.setMask();
+						$date.datepicker({dateFormat: 'dd-mm-yy'});
+						$date.datepicker("option", "minDate", new Date());
+						if (typeFreeze === 'unfreeze' || typeFreeze === 'cancel_freezing') {
+							$date.datepicker("option", "maxDate", new Date(response.ticket.end_status_date));
+							$form.find('[name="count"]').closest('[data-input-parent]').remove();
+						} else {
+							$form.find('[data-freeze-count]').unbind().on('input', function () {
+								let $self = $(this), max = $self.data('max'), value = parseInt(this.value.replace(/[^\d;]/g, ''));
+								if (max < value) value = max;
+								this.value = value;
+							}).on('change', function () {
+								let $self = $(this), min = $self.data('min'), max = $self.data('max'), value = parseInt(this.value.replace(/[^\d;]/g, ''));
+								if (min > value) value = min;
+								if (max < value) value = max;
+								this.value = value;
+							});
+						}
+
+						$form.on('submit', function () {
+							let $self = $(this), data = $self.serializeObject(), isError = false;
+							$self.find('input', function () {
+								let $selfImp = $(this);
+								if (!$selfImp.val()) {
+									isError = true;
+									$selfImp.addClass('error');
+								} else $selfImp.removeClass('error');
+							});
+							if (isError) return false;
+							if (typeFreeze === 'freeze') _this.setFreeze(data);
+							else _this.setUnfreeze(data);
+							return false;
+						});
+					});
+					return false;
+				});
+
+				$('[data-pay-item-debts]').unbind().on('click', function () {
+					let $self = $(this), $parent = $self.closest('[data-club_id]'), $parentEl = $self.closest('[data-id]'), id = $parentEl.data('id'), club_id = $parent.data('club_id');
+					_this.getPayFormDebts({id: [id], club_id: club_id});
+				});
+				$('[data-pay-item-debts-list]').unbind().on('click', function () {
+					let $self = $(this), $parent = $self.closest('[data-club_id]'), club_id = $parent.data('club_id'), id = [];
+					$parent.find('[data-id]').each(function () { id.push($(this).data('id')); });
+
+					_this.getPayFormDebts({id: id, club_id: club_id});
+				});
+				//endregion
+			}
+		});
+	}
+	f.setHtmlUserBlock = function (response) {
+		let _this = this;
+		if (response.userData) $(w.Fit.block.head.user_name).removeClass(w.Fit.class.hide).html(response.userData.arUser.FIO_relatives);
+		$(w.Fit.block.head.user_name).find('select').selectbox();
+		_this.setEventChangeRelatives();
+		$(w.Fit.block.head.user_logout).removeClass(w.Fit.class.hide);
+	}
+	f.setFreeze = function (data) {
+		let _this = this;
+
+		data.token = _this.getUserToken();
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'freeze_ticket', params: data,}, function (response) {
+			_this.showMessageBlock({response: response});
+			if (response.isError !== true) _this.getUserProfIndex();
+		});
+	}
+	f.setUnfreeze = function (data) {
+		let _this = this;
+
+		data.token = _this.getUserToken();
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'unfreeze_ticket', params: data,}, function (response) {
+			_this.showMessageBlock({response: response});
+			if (response.isError !== true) _this.getUserProfIndex();
+		});
+	}
+	f.setCancelFreeze = function (data) {
+		let _this = this;
+
+		data.token = _this.getUserToken();
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'cancel_freezing', params: data,}, function (response) {
+			_this.showMessageBlock({response: response});
+			if (response.isError !== true) _this.getUserProfIndex();
+		});
+	}
+	f.getPriceList = function (data) {
+		let _this = this;
+
+		let $blockUserCabinet = $(_this.block.userCabinet);
+		$blockUserCabinet.addClass(w.Fit.loading.name).html(_this.preLoader);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getPriceList', params: {token: _this.getUserToken(), filter: data},}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			$blockUserCabinet.html(response.Message);
+			_this.setHtmlUserBlock(response);
+
+			let $priceListBlock = $('[data-price-list-block]');
+
+			//region ShopFilter
+			_this.$formFilter = $(_this.shop.filter);
+			let $filterItem = $('.wr-hamb, .item-sel');
+			$filterItem.on('click', function () {
+				let $parent = $(this).parent();
+				$parent.find('.c-hamburger').toggleClass('is-active');
+				_this.scrollDestroy();
+				$parent.find('.die-sel').toggle();
+				_this.scrollInitialise();
+			});
+			_this.$formFilter.find('[data-type-all],[data-category-all],[data-service-all]').on('click', function () {
+				let $parent = $(this).closest('[data-title]');
+				if ($parent.find('.c-hamburger').hasClass('is-active')) {
+					let $inputs = $parent.find('.in-die input:checked');
+					$inputs.each(function () { $(this).prop("checked", false).prev('label').removeClass('active'); });
+					if ($inputs.length > 0) $($inputs[0]).trigger('change')
+				}
+				$parent.find('.c-hamburger').toggleClass('is-active');
+				_this.scrollDestroy();
+				$parent.find('.die-sel').toggle();
+				_this.scrollInitialise();
+			});
+
+			$('.in-die input[type="checkbox"]').on('change', function () {
+				let checked = $(this).is(':checked');
+				if (checked) $(this).prev('label').addClass('active');
+				else $(this).prev('label').removeClass('active');
+
+				_this.$formFilter.find('.select-nav').each(function () {
+					let selectNav = $(this), titleSelect = [];
+					selectNav.find('label.active').each(function () {
+						let label = $(this), option = label.data('filter-option');
+						titleSelect.push(option.title);
+					});
+					if (titleSelect.length > 0) selectNav.find('.item-sel').html(titleSelect.join(', '));
+					else selectNav.find('.item-sel').html(selectNav.data('title'))
+				});
+
+				//region Work filter
+				let filter = _this.$formFilter.serializeObject();
+				let $shopItems = $priceListBlock.find('[data-id]'), paramsLength = Object.keys(filter).length;
+
+				$shopItems.each(function (key, item) {
+					let $self = $(item), option = $self.data('option-filter'), filterCheckNum = 0;
+
+					for (key in filter) {
+						for (let keySub in filter[key]) {
+							let paramSelect = filter[key][keySub], paramEl = option[key];
+
+							if (Array.isArray(paramEl) && paramEl.indexOf(paramSelect) > -1) filterCheckNum++;
+							else if (paramSelect === paramEl) filterCheckNum++;
+						}
+					}
+
+					if (paramsLength === filterCheckNum) $self.removeClass(w.Fit.class.hide);
+					else $self.addClass(w.Fit.class.hide);
+				});
+
+				_this.shopShowHideTitle($priceListBlock);
+				//endregion
+			});
+			_this.$formFilter.off('input.shop-search').on('input.shop-search', '[data-search]', function () {
+				let $self = $(this);
+				$priceListBlock.find('[data-id]').removeClass(w.Fit.class.hide).each(function (i, item) {
+					let $selfItem = $(item);
+					if ($selfItem.data('name').indexOf($self.val()) < 0) $selfItem.addClass(w.Fit.class.hide);
+				});
+				_this.shopShowHideTitle($priceListBlock);
+			});
+			//endregion
+
+			_this.body.off('click.scroll-to').on('click.scroll-to', '[data-scroll-to]', function () {
+				let el = $('[data-nav-title="' + $(this).data('scroll-to') + '"]')[0];
+				el.scrollIntoView();
+			});
+			$('[data-pay-item]').unbind().on('click', function () {
+				let $self = $(this), $parent = $self.closest('[data-id]'), id = $parent.data('id'), club_id = $parent.data('club_id');
+				_this.getPayForm({id: id, club_id: club_id, type: 'price_list'});
+			});
+			$('[data-pay-item-trainer]').unbind().on('click', function () {
+				let $self = $(this), $parent = $self.closest('[data-id]'), id = $parent.data('id'), club_id = $parent.data('club_id');
+				_this.getPayFormTrainer({id: id, club_id: club_id,});
+			});
+
+			if ($.fn.selectbox) $('[data-fit-cabinet] select').selectbox();
+
+			$('[data-select-price_list]').on('change', function () {
+				let type = $(this).val(), $priceBlock = $priceListBlock, $priceList = $priceBlock.find('[data-id]');
+				if (type !== '') {
+					$priceList.addClass(w.Fit.class.hide);
+					$priceList.filter('[data-type="' + type + '"]').removeClass(w.Fit.class.hide);
+				} else $priceList.removeClass(w.Fit.class.hide);
+				$priceBlock.find('[data-tab-title]').each(function () {
+					let $self = $(this), text = $self.data('tab-title');
+					if ($self.find('[data-id]:not(.' + w.Fit.class.hide + ')').length > 0) {
+						// $item.removeClass(window.Fit.class.hide);
+						$priceBlock.find('[data-nav-title="' + text + '"]').removeClass(w.Fit.class.hide);
+					} else {
+						$self.addClass(w.Fit.class.hide);
+						$priceBlock.find('[data-nav-title="' + text + '"]').addClass(w.Fit.class.hide);
+					}
+				});
+			});
+			$('[data-select-price_list-club]').on('change', function () {
+				let club_id = $(this).val();
+				_this.getPriceList({club_id: club_id});
+			});
+			$priceListBlock.find('[data-nav-title]').on('click', function () {
+				let $self = $(this), text = $self.data('nav-title'), $tab = $('[data-tab-title="' + text + '"]');
+				$tab.toggleClass(w.Fit.class.hide);
+				$self.toggleClass('active_rz');
+			});
+
+			if (f.Tools.getQueryString('id')) $('[data-id="' + f.Tools.getQueryString('id') + '"] [data-pay-item]').trigger('click');
+
+			// раскрыть больше информации
+			_this.body.off('class.more-descr_rz').on('class.more-descr_rz', '.more-descr_rz a', function () {
+				$(this).parents('.wr-item-card_rz').toggleClass('active')
+			});
+		});
+	}
+	f.shopShowHideTitle = function ($priceListBlock) {
+		$priceListBlock.find('[data-tab-title]').each(function (i, item) {
+			let $self = $(item), hide = false;
+			if ($self.find('[data-id]:not(.' + w.Fit.class.hide + ')').length === 0) hide = true;
+			if (hide) {
+				$priceListBlock.find('[data-nav-title="' + $self.data('tab-title') + '"]').addClass(w.Fit.class.hide);
+				$self.addClass(w.Fit.class.hide);
+			} else {
+				$priceListBlock.find('[data-nav-title="' + $self.data('tab-title') + '"]').removeClass(w.Fit.class.hide);
+				$self.removeClass(w.Fit.class.hide);
+			}
+		});
+	}
+	f.getPayForm = function (params) {
+		let _this = this, dataSend, method = 'getCartCost';
+		dataSend = {
+			token: _this.getUserToken(), id: params.id, AppID: params.AppID, AppType: params.AppType, club_id: params.club_id,
+			employee_id: params.trainer_id, promocode: params.promocode, count: params.count, price_type_id: params.price_type_id,
+			cycle_id: params.cycle_id, course_id: params.course_id, cycle_period_id: params.cycle_period_id,
+		}
+		if (params.not_set_trainer !== 'Y') dataSend.trainer_id = params.trainer_id;
+		if (params.method) method = params.method;
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: method, params: dataSend,}, function (response) {
+			$(w.Fit.loading.name).removeClass(w.Fit.loading.name);
+			w.history.replaceState({}, d.title, w.location.pathname);
+			if (params.replacePop) params.replacePop.closest('.content_rz2').html(response.Message)
+			else _this.showMessageBlock({response: response, type: 'html'});
+			$('.radio_rz input[type="radio"]').ezMark();
+			_this.eventSetPay();
+		});
+	}
+	f.getPayFormDebts = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		if (params.custom_pay === 'Y')
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getDebtPayForm', params: {id: params.id,},}, function (response) {
+				$blockUserCabinet.removeClass(w.Fit.loading.name);
+				w.history.replaceState({}, d.title, w.location.pathname);
+				_this.showMessageBlock({response: response, type: 'html'});
+				_this.eventSetPay();
+			});
+		else
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getCartCostDebts', params: {token: _this.getUserToken(), id: params.id, club_id: params.club_id,},}, function (response) {
+				$blockUserCabinet.removeClass(w.Fit.loading.name);
+				w.history.replaceState({}, d.title, w.location.pathname);
+				_this.showMessageBlock({response: response, type: 'html'});
+				$('.radio_rz input[type="radio"]').ezMark();
+				_this.eventSetPay();
+			});
+	}
+	f.getPayFormTrainer = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getPayFormTrainer', params: {token: _this.getUserToken(), id: params.id, club_id: params.club_id,},}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			$('[data-id="' + params.id + '"]').find('[data-block-select-trainer]').html(response.Message).show();
+			$('.radio_rz input[type="radio"]').ezMark();
+			_this.eventSetPay();
+		});
+	}
+	f.getPayAddForm = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getPayAddForm', params: params,}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			_this.showMessageBlock({response: response, type: 'html'});
+			_this.eventSetPay();
+			$('[data-pay-form] [data-select-club]').selectbox();
+		});
+	}
+	f.getHistoryDeposit = function (params) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getHistoryDeposit', params: params,}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			if (response.isError) _this.showMessageBlock({response: response, type: 'html'});
+			else $blockUserCabinet.html(response.Message);
+		});
+	}
+	f.eventSetPay = function () {
+		let _this = this;
+		let $payFormTrainer = $('[data-pay-form-trainer]'), $payFormAndRegPay = $('[data-pay-form], [data-reg-pay-form]'), $payFormAuthRegPay = $('[data-auth-pay-form]');
+
+		_this.eventSetPayCalc();
+
+		$payFormAndRegPay.unbind().on('submit', function () {
+			let $self = $(this), data = $self.serializeObject();
+			data.origin = w.location.origin;
+			data.pathname = w.location.pathname;
+
+			data = _this.getAppendUtm(data);
+
+			$self.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setPay', params: {arFields: data, token: _this.getUserToken()},}, function (response) {
+				_this.extractSetPayResult($self, response);
+			});
+
+			return false;
+		});
+
+		_this.body.off('submit.pay-form-debts').on('submit.pay-form-debts', '[data-pay-form-debts]', function () {
+			let $self = $(this), data = $self.serializeObject();
+			data.origin = w.location.origin;
+			data.pathname = w.location.pathname;
+			data = _this.getAppendUtm(data);
+
+			$self.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setPayDebts', params: {arFields: data, token: _this.getUserToken()},}, function (response) {
+				_this.extractSetPayResult($self, response);
+			});
+
+			return false;
+		});
+
+		$payFormTrainer.find('[data-trainer-item] [name="price_type_id"]').on('click', function () {
+			$payFormTrainer.find('[data-price]').html($(this).closest('[data-trainer-item]').find('[data-input-price]').val());
+		});
+		$payFormTrainer.find('[data-submit]').unbind().on('click', function () {
+			let $el = $(this), $form = $el.closest('form'), id = $el.data('id');
+			if (!id) {
+				id = $form.find('[name="price_type_id"]:checked').data('employee_id');
+				$form.closest('[data-trainer-item]').find('[name="price_type_id"]:checked').trigger('click');
+			} else $el.closest('[data-trainer-item]').find('[name="price_type_id"]').trigger('click');
+
+			$form.find('[name="trainer_id"]').val(id);
+			$form.trigger('submit');
+		});
+		$payFormAndRegPay.find('[data-submit-promocode]').unbind().on('click', function () {
+			let $el = $(this), $form = $el.closest('form'), data = $form.serializeObject(), method = 'getRegPayForm';
+
+			if (_this.getUserToken()) method = 'getCartCost';
+
+			_this.getPayForm({
+				method: method, replacePop: $form, promocode: data.promocode, count: data.count, id: data.purchase_id, trainer_id: data.trainer_id,
+				employee_id: data.trainer_id, AppID: data.AppID, AppType: data.AppType,
+				cycle_period_id: data.cycle_period_id, course_id: data.course_id, cycle_id: data.cycle_id,
+				club_id: data.club_id, price_type_id: data.price_type_id, not_set_trainer: data.not_set_trainer
+			});
+			return false;
+		});
+		$payFormAuthRegPay.find('[data-submit-promocode]').unbind().on('click', function () {
+			let $el = $(this), $form = $el.closest('form'), data = $form.serializeObject();
+
+			_this.sendAuthPayFormEvent({count: data.count, id: data.id, club_id: data.club_id, promocode: data.promocode,}, 'Y');
+			return false;
+		});
+		$payFormTrainer.unbind().on('submit', function () {
+			let $self = $(this), data = $self.serializeObject();
+			data.origin = w.location.origin;
+			data.pathname = w.location.pathname;
+
+			_this.getPayForm({id: data.id, trainer_id: data.trainer_id, club_id: data.club_id, price_type_id: data.price_type_id});
+
+			return false;
+		});
+
+		let $date = $('[data-picker-pop]');
+		if ($date.length) {
+			$date.datepicker({dateFormat: 'dd-mm-yy'});
+			$date.datepicker("option", "minDate", new Date());
+			if ($date.data('max-data')) $date.datepicker("option", "maxDate", new Date($date.data('max-data')));
+		}
+
+		_this.setSelectbox();
+	}
+	f.eventSetPayCalc = function () {
+		let _this = this;
+
+		let $arDeposit = $('[data-deposit-list] [data-deposit]');
+		$arDeposit.unbind().on('input', function () {
+
+			let $self = $(this),
+				options = $self.data('options'),
+				$form = $self.closest('form'),
+				$dataCardPrice = $('[data-shop-pay]'),
+				payPrice, price = parseFloat($form.find('[name="total_amount"]').val()),
+				allPrice = 0, selfValue/*,payPrice = price*/;
+
+			if (this.value < 0) this.value = 0;
+
+			selfValue = $self.val();
+			if (selfValue === '') selfValue = 0;
+
+			selfValue = parseFloat(selfValue);
+			if (selfValue > options.payment_amount) $self.val(selfValue = options.payment_amount);
+			if (selfValue > options.balance) $self.val(selfValue = options.balance);
+
+			$arDeposit.each(function (i, el) {
+				let value = parseFloat(el.value);
+				if (!value) value = 0;
+				allPrice += value;
+			});
+
+			if (allPrice > price) {
+				payPrice = price - (allPrice - selfValue);
+				$self.val(payPrice);
+				payPrice = 0;
+			} else payPrice = price - allPrice;
+			payPrice = Math.round((payPrice) * 100) / 100;
+
+			if (payPrice > 0) {
+				$dataCardPrice.find('[data-img-card],[data-cur]').removeClass(w.Fit.class.hide);
+				$dataCardPrice.find('[data-price]').html(payPrice);
+				$dataCardPrice.find('[data-cur]').html(options.cur);
+			} else {
+				$dataCardPrice.find('[data-img-card],[data-cur]').addClass(w.Fit.class.hide);
+				$dataCardPrice.find('[data-price]').html('');
+				$dataCardPrice.find('[data-cur]').html(options.cur);
+			}
+		});
+
+		_this.body.off('input.select-count').on('input.select-count', '[data-select-count] [name="count"]', function () {
+			let $self = $(this), $form = $self.closest('form');
+			clearInterval(_this.timerSendSms);
+
+			if (this.value > parseInt($self.attr('max'))) {
+				this.value = parseInt($self.attr('max'));
+				return false;
+			}
+
+			_this.timerSendSms = setTimeout(function () {
+				if ($form.find('[data-submit-promocode]').length) {
+					$form.find('[data-submit-promocode]').trigger('click');
+					$form.addClass(w.Fit.loading.name);
+				}
+			}, 500);
+		});
+		_this.body.off('click.cart-item-minus').on('click.cart-item-minus', '[data-cart-item-minus]', function () {
+			let $minus = $(this), $count = $minus.closest('[data-select-count]').find('[name="count"]');
+			if ($count.val() <= 1) return false;
+
+			$minus.addClass('act');
+			$count.val(parseInt($count.val()) - 1).trigger('input.select-count');
+		});
+		_this.body.off('click.cart-item-plus').on('click.cart-item-plus', '[data-cart-item-plus]', function () {
+			let $plus = $(this), $count = $plus.closest('[data-select-count]').find('[name="count"]'), newCount = parseInt($count.val());
+
+			if (parseInt($count.attr('max')) <= newCount) return false;
+
+			$plus.addClass('act');
+			$count.val(newCount + 1).trigger('input.select-count');
+		});
+
+	}
+
+	/* Check Online Pay */
+	f.checkPay = function (inCabinet) {
+		let _this = this;
+
+		let isError = f.Tools.getQueryString("isError"),
+			successPay = f.Tools.getQueryString("successPay"), successAutoPay = f.Tools.getQueryString("successAutoPay"), pay_id = f.Tools.getQueryString("pay_id"),
+			club_id = f.Tools.getQueryString("club_id"), orderId = f.Tools.getQueryString("orderId"), checkMethod = 'checkPay';
+
+		if (isError || successPay || successAutoPay) {
+			_this.body.addClass(w.Fit.loading.name);
+			if (successAutoPay) checkMethod = 'checkAutoPay';
+
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: checkMethod, params: {
+					arFields: {
+						isError: isError, successPay: successPay, club_id: club_id,
+						pay_id: pay_id, orderId: orderId,
+					},
+					token: _this.getUserToken()
+				},
+			}, function (response) {
+				_this.body.removeClass(w.Fit.loading.name);
+				if (inCabinet) _this.getUserProfIndex();
+
+				_this.showMessageBlock({
+					response: response, type: 'final', afterShowFunction: null, hideOther: null, afterCloseFunction: function () {
+						history.pushState(null, null, w.location.pathname);
+						_this.closePop(true);
+					}
+				});
+			});
+		} else if (inCabinet) _this.getUserProfIndex();
+	}
+	f.setEventUnbindCard = function () {
+		let _this = this;
+		$('[data-unbind-card]').unbind().on('click', function () {
+			let $self = $(this), id = $self.data('id');
+
+			f.body.find(f.block.userCabinet).addClass(w.Fit.loading.name);
+
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'unbindCard', params: {id: id, token: _this.getUserToken()},}, function (response) {
+				_this.showMessageBlock({response: response, afterShowFunction: function () { f.body.find(f.block.userCabinet).addClass(w.Fit.loading.name); }});
+				_this.getUserProf();
+			});
+		});
+	}
+	f.eventUpdateUser = function () {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		if (w.Fit.arUser) {
+			$blockUserCabinet.find('[name="last_name"]').val(w.Fit.arUser.last_name);
+			$blockUserCabinet.find('[name="name"]').val(w.Fit.arUser.name);
+			$blockUserCabinet.find('[name="second_name"]').val(w.Fit.arUser.second_name);
+			$blockUserCabinet.find('[name="email"]').val(w.Fit.arUser.email);
+			$blockUserCabinet.find('[name="birthday"]').val(w.Fit.arUser.birthday);
+		}
+		_this.$formUpdateUser.unbind().on('submit', function () {
+			let $self = $(this), data = {token: _this.getUserToken()};
+
+			//region Add token
+			let tempData = $self.serializeObject();
+			Object.keys(tempData).map(function (objectKey) { data[objectKey] = tempData[objectKey]; });
+			//endregion
+
+			$self.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setUserData', params: {arFields: $self.serializeObject(), token: _this.getUserToken()},}, function () {
+				$self.removeClass(w.Fit.loading.name);
+				_this.getUserProf();
+			});
+			return false;
+		});
+	}
+	f.eventShowUpdUserClub = function () {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		$blockUserCabinet.find('[data-user-profile]').remove();
+		$('[data-block-upd-club]').removeClass(w.Fit.class.hide);
+		_this.eventUpdUserClub();
+	}
+	f.eventUpdUserClub = function () {
+		let _this = this;
+		let $formUpdUserClub = $(w.Fit.form.userUpdClub);
+
+		$formUpdUserClub.unbind().on('submit', function () {
+			let $self = $(this), data = {token: _this.getUserToken()};
+
+			//region Add token
+			let tempData = $self.serializeObject();
+			Object.keys(tempData).map(function (objectKey) { data[objectKey] = tempData[objectKey]; });
+			//endregion
+
+			$self.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setUserData', params: {arFields: $self.serializeObject(), token: _this.getUserToken()},}, function () {
+				$self.removeClass(w.Fit.loading.name);
+				_this.getUserProf();
+			});
+			return false;
+		});
+	}
+	/** UserIndexPage */
+	f.getUserProf = function () {
+		let _this = this, $blockUserCabinet = $(_this.block.userCabinet);
+
+		$blockUserCabinet.addClass(w.Fit.loading.name).html(_this.preLoader);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+			method: 'getUserProf',
+			params: {token: _this.getUserToken()},
+		}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			$blockUserCabinet.html(response.Message);
+
+			if (response.userData) {
+				$('[data-fit-club-name]').html(response.userData.arUser.club.name);
+				w.Fit.arUser = response.userData.arUser;
+			}
+
+			$('[data-get-block-update-club]').on('click', function () {
+				let $blockUserCabinet = $(_this.block.userCabinet);
+				$blockUserCabinet.find('[data-user-profile]').remove();
+				$('[data-block-upd-club]').removeClass(w.Fit.class.hide);
+				_this.eventShowUpdUserClub();
+			});
+
+			$('[data-get-block-update-user]').on('click', function () {
+				$blockUserCabinet.html($blockUpdateUser[0]);
+				_this.eventUpdateUser();
+			});
+			_this.setEventGetAutoPayLink();
+
+			$('.radio_rz input[type="radio"]:not(.ez-hide_rz)').ezMark();
+			_this.eventUpdUserClub();
+			_this.setEventUnbindCard();
+			_this.setShowEvents();
+		});
+	}
+	f.getAutoPayPop = function () {
+		let _this = this;
+
+		_this.body.addClass(w.Fit.loading.name);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getAutoPayInfo', params: {token: _this.getUserToken(),},}, function (response) {
+			$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+			_this.showMessageBlock({
+				response: response, type: 'html', afterShowFunction: function () { _this.setEventGetAutoPayLink(); }, hideOther: null, afterCloseFunction: function () {
+					_this.Cookie.set('Fit_ShowAutoPayPop', '');
+				}
+			});
+		});
+	}
+	f.setEventGetAutoPayLink = function () {
+		let _this = this;
+
+		$('[data-add-autopay-info]').unbind().on('click', function () { _this.getAutoPayPop(); });
+		$('[data-add-autopay]').unbind().on('click', function () {
+			_this.body.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: 'getAutoPayLink', params: {token: _this.getUserToken(), origin: w.location.origin, pathname: w.location.pathname},
+			}, function (response) {
+				_this.Cookie.set('Fit_ShowAutoPayPop', '');
+
+				$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+				if (response.isError) {
+					_this.showMessageBlock({response: response});
+					_this.body.removeClass(w.Fit.loading.name);
+				} else if (response.arData && response.arData.formUrl) w.location.href = response.arData.formUrl;
+			});
+		});
+	}
+
+	/** UserIndexPage */
+	f.getUserApp = function (page, page_size) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		$blockUserCabinet.addClass(w.Fit.loading.name).html(_this.preLoader);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getUserApp', params: {token: _this.getUserToken(), page: page, page_size: page_size},}, function (response) {
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+			$blockUserCabinet.html(response.Message);
+
+			_this.appUnSet('Y');
+			_this.appSet('Y');
+
+			$('[data-more-history]').on('click', function () {
+				_this.getUserHistory($(this).find('button').data('page_size'), $(this).find('button').data('requested_offset'));
+			});
+		});
+	}
+
+	/** UserIndexPage */
+	f.getUserHistory = function (page_size, requested_offset) {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		$blockUserCabinet.addClass(w.Fit.loading.name);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+			method: 'getUserHistory', params: {token: _this.getUserToken(), page_size: page_size, requested_offset: requested_offset},
+		}, function (response) {
+			$blockUserCabinet.find('[data-history-list]').append(response.Message);
+			if (response.arData.showMore === 'Y') $blockUserCabinet.find('[data-more-history] button').data('page_size', response.arData.page_size).data('requested_offset', response.arData.requested_offset);
+			else $blockUserCabinet.find('[data-more-history]').remove();
+			$blockUserCabinet.removeClass(w.Fit.loading.name);
+		});
+	}
+	//endregion
+
+	//region Calendar
+	/**
+	 * getCalendar
+	 * */
+	f.getCalendar = function (salonId, calendarType) {
+		let _this = this;
+		let getUser = false, trainer_id, service_id, time, type_group, app_id;
+
+		if (_this.isLK === false && !w.hideLink && w.Fit.lang_code !== 'en') {
+			$(w.Fit.block.calendarContent).append('<div class="link-work_res"><a href="https://www.fitness1c.ru/schedule" target="_blank">Расписание работает на 1С:Фитнес клуб</a></div>');
+		} else $(w.Fit.block.calendarContent).append('<div class="link-work_res"></div>');
+
+
+		if (_this.getUserToken() && $(w.Fit.block.head.user_name).is(':empty')) getUser = 'Y';
+
+		if (!salonId && $(w.Fit.block.calendarContent).find('[name="club"]').length) salonId = $(w.Fit.block.calendarContent).find('[name="club"]').val();
+
+		if (!salonId) salonId = '';
+		if (!calendarType) calendarType = '';
+
+		if (!calendarType && f.Tools.getQueryString('type')) calendarType = f.Tools.getQueryString('type');
+		if (f.Tools.getQueryString('time')) time = f.Tools.getQueryString('time').split('|');
+		if (f.Tools.getQueryString('type_group')) type_group = f.Tools.getQueryString('type_group').split('|');
+		if (f.Tools.getQueryString('trainer_id')) trainer_id = f.Tools.getQueryString('trainer_id').split('|');
+		if (f.Tools.getQueryString('service_id')) service_id = f.Tools.getQueryString('service_id').split('|');
+		if (f.Tools.getQueryString('app_id')) app_id = f.Tools.getQueryString('app_id');
+		if (f.Tools.getQueryString('club_id')) {
+			salonId = f.Tools.getQueryString('club_id');
+			let link = w.location.pathname, getParams = [];
+			['page', 'type', 'trainer_id', 'service_id',].forEach(function (value) {
+				if (f.Tools.getQueryString(value)) getParams.push(value + '=' + f.Tools.getQueryString(value));
+			});
+			if (getParams) link = link + '?' + getParams.join('&');
+
+			history.pushState(null, null, link);
+		}
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+			method: 'getFitCalendar', params: {
+				getAll: 'Y', window_width: $(w).width(),
+				getUser: getUser,
+				trainer_id: trainer_id, service_id: service_id, time: time, type_group: type_group,
+				calendarType: calendarType,
+				token: _this.getUserToken(), token_master: _this.getUserTokenMaster(), salonId: salonId,
+			}
+		}, function (response) {
+			let $clubImg = $('[data-fit-club-logo]'), $clubName = $('[data-fit-club-name]');
+			calendarType = response.calendarType;
+			if (response.arClub.logo && $clubImg.length) $clubImg.html('<img src="' + w.Fit.source_dir + response.arClub.logo + '" alt="">');
+			if (response.arClub.name && $clubName.length) $clubName.html(response.arClub.name);
+
+			if (response.mask_phone) {
+				if (response.mask_phone.rule) w.Fit.mask.rule = response.mask_phone.rule;
+				if (response.mask_phone.placeholder) w.Fit.mask.placeholder = response.mask_phone.placeholder;
+				if (response.mask_phone.prefix_img) w.Fit.mask.prefix_img = response.mask_phone.prefix_img;
+				_this.setMask();
+			}
+			if (response.arUser) {
+				$(w.Fit.block.head.user_name).removeClass(w.Fit.class.hide).html(response.arUser.FIO_relatives);
+				$(w.Fit.block.head.user_name).find('select').selectbox();
+				_this.setEventChangeRelatives();
+				$(w.Fit.block.head.user_logout).removeClass(w.Fit.class.hide);
+			}
+
+			$(w.Fit.block.calendarContent).html(response.SLIDER.ALL_BLOCK);
+			$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+
+			if(w.hideLink) $(window.Fit.block.calendarContent).find('.link-work_res').html('')
+
+
+			$(w.Fit.block.calendarContent).find('[data-get-calendar-type]').on('click', function () {
+				let $self = $(this);
+
+				_this.getCalendar(salonId, $self.data('get-calendar-type'));
+			});
+
+			if (_this.isLK === true) $(w.Fit.block.calendarContent).find('.link-work_res').empty();
+
+
+			_this.$createPayOrder = $(w.Fit.block.createPayOrder);
+
+			//region Filter
+			_this.renderSlider();
+			_this.resizeSched();
+
+			_this.setCalendarSelectEvent(calendarType);
+
+			if (!calendarType || calendarType === 'section' || calendarType === 'group') {
+				_this.setCalendarFilterEvent();
+				_this.setCalendarSelectPersonalEvent(calendarType);
+			} else _this.setCalendarSelectPersonalEvent(calendarType);
+			//endregion
+
+			$('.die-sel').hide();
+
+			if (calendarType === 'group' && (type_group || trainer_id || service_id || time)) $('.in-die input:first').trigger('change');
+
+			_this.updFilter(response.FILTER);
+
+			_this.showSetApp();
+
+			$(w.Fit.block.calendarContent).find('[data-not-set] [data-option]').parent().on('click', function () {
+				let $self = $(this).find('[data-option]'), $parent = $self.closest('[data-not-set]'), options = $self.data('option');
+				$parent.find('[data-option]').parent().removeClass('active');
+				$self.addClass('active');
+
+				_this.getCalendar(options.salonId);
+			});
+
+			$(w.Fit.block.calendarContent).removeClass(w.Fit.loading.name);
+			$(w).trigger('scroll');
+			if (app_id) $('[data-body-schedule] [data-id="' + app_id + '"]').trigger('click');
+
+			if (service_id) {
+				let $dataDayBlock = $('[data-table] [data-service-id]').filter(function () {
+					return this.dataset.serviceId.match(new RegExp(service_id.join('|'), 'g'))
+				}).closest('[data-date]'), showSlideIndex = $dataDayBlock.closest('[data-slide]').index();
+				if (showSlideIndex >= 0) {
+					let $dateSetVisible = _this.body.find('[data-mobile-day] [data-date][data-active="Y"]:visible');
+					if ($dateSetVisible.length) $dateSetVisible[0].dataset.active = 'N';
+					_this.body.find('[data-mobile-day] [data-date="' + $dataDayBlock.data('date') + '"]')[0].dataset.active = 'Y';
+					w.Fit.sliderTitle.goToSlide(showSlideIndex);
+					w.Fit.sliderContent.goToSlide(showSlideIndex);
+				}
+			}
+		});
+	}
+	f.getCalendarUser = function () {
+		let _this = this;
+		$(_this.block.userCabinet).html('<div ' + w.Fit.block.calendarContent.replace(/\[(.*)]/, '$1') + '></div>');
+		$(w.Fit.block.calendarContent).html(w.Fit.block.loaderHTML);
+		_this.getCalendar();
+	}
+
+	//region Work Appointments
+	f.getWaitingRecord = function (params) {
+		let _this = this;
+
+		_this.sendShowSetAppBlock(params, 'getWaitingRecord', 'show');
+	}
+	/** Show Appointment */
+	f.showSetApp = function () {
+		let _this = this;
+
+		$("[data-timetable-item]").unbind().on('click', function () {
+			let $self = $(this), options = $self.data('options'),
+				params = {
+					SalonID: options.SalonID, AppID: options.AppID, start_date: options.start_date, employee_id: options.employee_id,
+					token: _this.getUserToken(),
+				}, method = 'getApp';
+
+			_this.sendShowSetAppBlock(params, method, 'show');
+		});
+		$("[data-timetable-item-personal]").unbind().on('click', function () {
+			let $self = $(this), paramsForm = $('[data-calendar-filter]').serializeObject(),
+				options = $self.data('options'),
+				params = {
+					employee_id: paramsForm.employee_id, service_id: paramsForm.service_id,
+					date_time: options.date_time, seance_length: options.seance_length,
+					appointment_id: options.appointment_id, club_id: options.club_id,
+					token: _this.getUserToken(),
+				};
+
+			_this.sendShowSetApp(params, 'getAppPersonal');
+		});
+		$("[data-timetable-item-rent],[data-timetable-item-visit]").unbind().on('click', function () {
+			let $self = $(this), paramsForm = $('[data-calendar-filter]').serializeObject(),
+				options = $self.data('options'),
+				params = {
+					rental_id: options.rental_id, room_id: paramsForm.room_id, service_id: paramsForm.service_id,
+					club_id: options.club_id ? options.club_id : options.SalonID,
+					time: options.time, date_time: options.date_time, seance_length: options.seance_length,
+					token: _this.getUserToken(),
+				};
+			if (options.room_id) params.room_id = options.room_id;
+
+			if ($self.hasAttr('data-timetable-item-visit')) _this.sendShowSetApp(params, 'getAppVisit');
+			else _this.sendShowSetApp(params, 'getAppRent');
+		});
+		//region section
+		$("[data-timetable-item-section]").unbind().on('click', function () {
+			let $self = $(this), options = $self.data('options'), params = {
+				app_id: options.AppID,
+				section_id: options.section_id, cycle_id: options.cycle_id,
+				employee_id: options.employee_id,
+				club_id: options.club_id,
+				token: _this.getUserToken(),
+			};
+
+			_this.sendShowSetApp(params, 'getAppSection');
+		});
+		$("[data-get-section-price_list]").unbind().on('click', function () {
+			let $self = $(this), options = $self.data('options'), params = {
+				employee_id: options.employee_id,
+				section_id: options.section_id,
+				cycle_id: options.cycle_id,
+				club_id: options.club_id,
+				token: _this.getUserToken(),
+			};
+
+			$(w.Fit.block.calendarContent).addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getAppSectionPriceList', params: params,}, function (response) {
+				$(w.Fit.block.calendarContent).removeClass(w.Fit.loading.name);
+
+				_this.showMessageBlock({response: response, type: null});
+				_this.setCheckedPrice();
+			});
+		});
+		_this.setCheckedPrice();
+		//endregion
+	}
+	/** set unset app */
+	f.appSet = function (notCalendar) {
+		let _this = this, paramsSend;
+
+		_this.setShowEvents();
+
+		$('[data-app-set]').unbind().on('click', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				$ticket_id = $pBlock.find('[data-pay-service]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions, token = _this.getUserToken();
+
+			params.appSet = $self.data('app-set');
+			if ($ticket_id.length > 0) params.ticket_id = $ticket_id.find('option:selected:last').val();
+			if (token) params.token = token;
+
+			paramsSend = {method: 'setApp', params: params};
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, paramsSend, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+				if (response.code === '1002.1' && !_this.getUserToken()) _this.Tools.setCartData({setApp: paramsSend});
+				if (response.payForm === true) {
+					_this.closePop(true);
+					_this.showMessageBlock({response: response, type: 'html-empty', afterShowFunction: function () { _this.setCheckedPrice(); }, hideOther: 'N'});
+				} else {
+					_this.showMessageBlock({
+						response: response, type: 'html-empty', afterShowFunction: null, hideOther: 'N', afterCloseFunction: function () {
+							let obCart = _this.Tools.getCartData();
+							if (obCart.setApp) {
+								obCart.setApp.params.token = _this.getUserToken();
+								_this.closePop(true);
+								_this.sendShowSetAppBlock(obCart.setApp.params, 'setApp', 'show');
+								_this.Tools.removeCartItem('setApp');
+							} else {
+								let $paramsTime = $("[data-timetable-item][data-id='" + params.AppID + "']"),
+									options = $paramsTime.data('options'),
+									paramsTime = {
+										SalonID: options.SalonID, AppID: options.AppID,
+										token: _this.getUserToken(), 'typeBlock': 'update'
+									};
+								_this.sendShowSetAppBlock(paramsTime, 'getApp', 'update');
+							}
+						}
+					});
+				}
+			});
+		});
+		$('[data-app-set-personal]').unbind().on('click', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				$ticket_id = $pBlock.find('[name="ticket"]'),
+				$service_id = $pBlock.find('[data-select-service]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions;
+
+
+			params.token = _this.getUserToken();
+			if ($service_id.length > 0) params.service_id = $service_id.find('option:selected:last').val();
+			if ($ticket_id.length > 0) params.ticket_id = $ticket_id.val();
+
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setAppPersonal', params: params}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				if (response.payForm === true) {
+					_this.showMessageBlock({response: response, type: 'html-empty', afterShowFunction: function () { _this.setCheckedPrice(); }, hideOther: 'N'});
+				} else {
+					let $trainer = $('[data-app-trainers]'), $form = $trainer.closest('form');
+					_this.getCalendarData($form.serializeObject(), 'personal');
+					_this.showMessageBlock({response: response});
+				}
+			});
+		});
+		$('[data-app-set-rental]').unbind().on('click', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				$time = $pBlock.find('[name="time"]'),
+				$resources = $pBlock.find('[name="resources[]"]:checked'),
+				$ticket_id = $pBlock.find('[name="ticket"]'),
+				$service_id = $pBlock.find('[data-select-service]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions;
+
+			params.token = _this.getUserToken();
+			params.resources = [];
+			if ($service_id.length > 0) params.service_id = $service_id.find('option:selected:last').val();
+			if ($time.length > 0) params.time = $time.find('option:selected:last').val();
+			if ($ticket_id.length > 0) params.ticket_id = $ticket_id.find('option:selected:last').val();
+			if ($resources.length > 0) $resources.each(function () { params.resources.push(this.value); });
+
+			paramsSend = {method: 'setAppRental', params: params};
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, paramsSend, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+				if (response.code === '1002.1' && !_this.getUserToken()) _this.Tools.setCartData({getAppRent: paramsSend});
+
+				if (response.payForm === true) {
+					_this.showMessageBlock({response: response, type: 'html-empty', afterShowFunction: function () { _this.setCheckedPrice(); }, hideOther: 'N'});
+				} else {
+					let $rooms = $('[data-app-rooms]'), $form = $rooms.closest('form');
+					_this.getCalendarData($form.serializeObject(), 'rent');
+					_this.showMessageBlock({response: response});
+				}
+			});
+		});
+		$('[data-app-set-visit]').unbind().on('click', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				$ticket_id = $pBlock.find('[name="ticket"]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions;
+
+			params.token = _this.getUserToken();
+			if ($ticket_id.length > 0) params.ticket_id = $ticket_id.val();
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setAppVisit', params: params}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				let $rooms = $('[data-app-visit-room]'), $form = $rooms.closest('form');
+				_this.getCalendarData($form.serializeObject(), 'visit');
+				_this.showMessageBlock({response: response});
+			});
+		});
+		$('[data-app-set-section]').unbind().on('click', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				$cycle_period = $pBlock.find('[name="cycle_period"]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions;
+
+			params.token = _this.getUserToken();
+			if ($cycle_period.length > 0) {
+				params.period_id = $cycle_period.val();
+			}
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: 'setAppSection', params: params
+			}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				_this.getCalendarData({}, 'section');
+				_this.showMessageBlock({response: response});
+			});
+		});
+		_this.body.off('click.app-wait').on('click.app-wait', '[data-app-wait]', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions, token = _this.getUserToken();
+			if (token)
+				params.token = token;
+
+			params.confirmed = $self.data('app-wait') === 'set' ? 'Y' : '';
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: 'setWaitingListConfirm', params: params
+			}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+				if (response.typeBlock === 'update') {
+					_this.closePop()
+					_this.sendShowSetApp(response, 'setApp');
+				} else
+					_this.showMessageBlock({response: response});
+
+			});
+		});
+		_this.body.off('click.app-wait-record-list').on('click.app-wait-record-list', '[data-app-wait-record-list]', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				pOptions = $pBlock.data('options'),
+				params = pOptions, token = _this.getUserToken();
+			if (token)
+				params.token = token;
+			params.type = $self.data('app-wait-record-list');
+
+			$pBlock.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: 'setWaitingList', params: params
+			}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				_this.showMessageBlock({response: response, type: 'html-empty'});
+				if (notCalendar === 'Y') _this.getUserApp();
+			});
+		});
+	}
+
+	/** unset set app */
+	f.appUnSet = function (notCalendar) {
+		let _this = this;
+		$('[data-app-unset]').unbind().on('click', function () {
+			let $pBlock = $(this).closest('[data-set-app-form]'), pOptions = $pBlock.data('options'), params;
+			$pBlock.addClass(w.Fit.loading.name);
+			params = {
+				SalonID: pOptions.SalonID, AppID: pOptions.AppID,
+				token: _this.getUserToken(),
+			};
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: 'CancelApp',
+				params: params,
+			}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+				_this.showMessageBlock({response: response});
+				if (notCalendar === 'Y') _this.getUserApp();
+			});
+		});
+		$('[data-app-unset-personal]').unbind().on('click', function () {
+			let $pBlock = $(this).closest('[data-set-app-form]'),
+				pOptions = $pBlock.data('options'), params;
+			$pBlock.addClass(w.Fit.loading.name);
+			params = {SalonID: pOptions.SalonID, AppID: pOptions.AppID, token: _this.getUserToken(),};
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'cancelAppPersonal', params: params,}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				let $trainer = $('[data-app-trainers]'), $form = $trainer.closest('form');
+				if (notCalendar === 'Y') _this.getUserApp();
+				else _this.getCalendarData($form.serializeObject(), 'personal');
+				_this.showMessageBlock({response: response});
+			});
+		});
+		$('[data-app-unset-rental]').unbind().on('click', function () {
+			let $pBlock = $(this).closest('[data-set-app-form]'),
+				pOptions = $pBlock.data('options'), params;
+			$pBlock.addClass(w.Fit.loading.name);
+			params = {rental_id: pOptions.rental_id, club_id: pOptions.club_id, token: _this.getUserToken(),};
+
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'cancelAppRental', params: params,}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				let $trainer = $('[data-app-rooms]'), $form = $trainer.closest('form');
+				_this.getCalendarData($form.serializeObject(), 'rent');
+				_this.showMessageBlock({response: response});
+			});
+		});
+		$('[data-app-unset-visit]').unbind().on('click', function () {
+			let $self = $(this), $pBlock = $self.closest('[data-set-app-form]'),
+				pOptions = $pBlock.data('options'), params;
+			$pBlock.addClass(w.Fit.loading.name);
+			params = {
+				room_id: pOptions.room_id, date_time: pOptions.date_time,
+				club_id: pOptions.club_id,
+				token: _this.getUserToken(),
+			};
+
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'cancelAppVisit', params: params,}, function (response) {
+				$pBlock.removeClass(w.Fit.loading.name);
+
+				if ($self.data('func') === 'getUserApp') {
+					_this.getUserApp();
+				} else {
+					let $trainer = $('[data-app-visit-room]'), $form = $trainer.closest('form');
+					_this.getCalendarData($form.serializeObject(), 'visit');
+					_this.showMessageBlock({response: response});
+				}
+			});
+		});
+	}
+
+	f.sendShowSetApp = function (params, methodSend) {
+		let _this = this;
+		let method = 'getAppPersonal';
+		if (methodSend) method = methodSend;
+
+		$(w.Fit.block.calendarContent).addClass(w.Fit.loading.name);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: method, params: params,}, function (response) {
+			$(w.Fit.block.calendarContent).removeClass(w.Fit.loading.name);
+			_this.showMessageBlock({
+				response: response, type: 'html-empty', afterShowFunction: function () {
+					_this.paginationSet();
+					_this.showSetApp();
+
+					let $selectService = $('[data-select-service]'), $selectTicket = $('[data-select-ticket]'),
+						$pBlock = $selectService.closest('[data-set-app-form]');
+
+					$selectService.on('change', function () {
+						let $self = $(this), $selectTime = $('[name="time"]'), $option = $self.find('option:selected:last');
+
+						if ($option.val() === '') $selectTicket.empty().addClass(w.Fit.class.hide);
+						else {
+							if ($option.data('pay-req') !== 'Y' && method !== 'getAppRent') $selectTicket.empty().addClass(w.Fit.class.hide);
+							else {
+								$pBlock.addClass(w.Fit.loading.name);
+								w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+									method: 'getTicketsByService',
+									params: {
+										token: _this.getUserToken(), method: method, count: $selectTime.val(),
+										room_id: params.room_id, club_id: params.club_id, date_time: params.date_time, employee_id: params.employee_id, service_id: $option.val(), pay_req: $option.data('pay-req'),
+									},
+								}, function (response) {
+									if (response.isError === true) _this.showMessageBlock({response: response, type: null});
+									else {
+										if (response.count > 0 || $option.data('pay-req') !== 'Y' && method === 'getAppRent') {
+											$pBlock.find('[data-app-set-personal],[data-app-set-rental]').text(w.Fit.lang.button_reserve);
+											$selectTicket.empty().html(response.Message).removeClass(w.Fit.class.hide);
+										} else {
+											$pBlock.find('[data-app-set-personal],[data-app-set-rental]').text(w.Fit.lang.button_pay);
+											$selectTicket.addClass(w.Fit.class.hide);
+											$selectTicket.empty().html(response.Message).removeClass(w.Fit.class.hide);
+										}
+										_this.setSelectbox();
+									}
+									$pBlock.removeClass(w.Fit.loading.name);
+								});
+							}
+						}
+					});
+
+					if ((method === 'getAppRent' || method === 'getAppPersonal') && $selectService.find('option').length === 1) $selectService.trigger('change');
+
+					_this.body.off('change.time').on('change.time', '[name="time"]', function () {
+						let $self = $(this), $option = $self.find('option:selected'), $pBlock = $self.closest('[data-set-app-form]'), $selectTicket = $pBlock.find('[data-select-ticket]');
+						let date = new Date(($pBlock.find('[data-seance_start]').data('seance_start') + ($option.data('time') * 60)) * 1000), pBlockOptions = $pBlock.data('options');
+
+						$pBlock.find('[data-seance_length]').html($option.data('time'));
+						$pBlock.find('[data-seance_end]').html((date.getHours() < 10 ? '0' + date.getHours() : date.getHours()) + ':' + (date.getMinutes() < 10 ? '0' + date.getMinutes() : date.getMinutes()));
+
+						$pBlock.addClass(w.Fit.loading.name);
+						w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+							method: 'getTicketsByService',
+							params: {
+								token: _this.getUserToken(), method: method, count: $option.val(),
+								room_id: params.room_id,
+								service_id: params.service_id, date_time: params.date_time, pay_req: pBlockOptions.pay_req,
+								club_id: params.club_id,
+							},
+						}, function (response) {
+							if (response.isError === true) _this.showMessageBlock(response, null);
+							else {
+								if (response.count > 0 || pBlockOptions.pay_req !== 'Y' && method === 'getAppRent') {
+									$pBlock.find('[data-app-set-personal],[data-app-set-rental]').text(w.Fit.lang.button_reserve);
+									$selectTicket.empty().html(response.Message).removeClass(w.Fit.class.hide);
+								} else {
+									$pBlock.find('[data-app-set-personal],[data-app-set-rental]').text(w.Fit.lang.button_pay);
+									$selectTicket.addClass(w.Fit.class.hide);
+									$selectTicket.empty().html(response.Message).removeClass(w.Fit.class.hide);
+								}
+								_this.setSelectbox();
+							}
+							$pBlock.removeClass(w.Fit.loading.name);
+						});
+					});
+					_this.setSelectbox();
+				}
+			});
+
+			_this.appSet();
+			_this.appUnSet();
+
+		});
+	}
+	f.sendShowSetAppBlock = function (params, methodSend, typeView) {
+		let _this = this;
+
+		$(w.Fit.block.calendarContent).addClass(w.Fit.loading.name);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: methodSend, params: params,}, function (response) {
+			$(w.Fit.block.calendarContent).removeClass(w.Fit.loading.name);
+			if (methodSend === 'getWaitingRecord' && response.token) _this.setUserToken(response.token);
+			if (typeView === 'update') {
+				$('[data-set-app-form]').html(response.Message);
+				_this.paginationSet();
+				_this.setAuthEvent();
+				_this.setSelectbox();
+			} else {
+				_this.showMessageBlock({
+					response: response, type: 'html-empty', afterShowFunction: function () {
+						_this.paginationSet();
+						_this.setAuthEvent();
+						_this.setSelectbox();
+						if (methodSend === 'getWaitingRecord') w.history.replaceState({}, d.title, w.location.pathname);
+					}, hideOther: 'N'
+				});
+			}
+
+			_this.appSet();
+			_this.appUnSet();
+
+		});
+	}
+	//endregion
+
+	/** Set filter */
+	f.setCalendarFilter = function ($form) {
+		let _this = this;
+
+		let //$calDate = $(_this.calendar.date),
+			$calBody = $(_this.calendar.body),
+			$calItems = $calBody.find('[data-option-filter]'),
+			$calBlock = $('.in-block-sched'), params = $form.serializeObject();
+		$calBlock.addClass(w.Fit.loading.name);
+
+		delete params["arParams"];
+		let paramsLength = Object.keys(params).length;
+
+		$calItems.each(function (key, item) {
+			let $self = $(item), option = $self.data('option-filter'), filterCheckNum = 0;
+
+			for (key in params) for (let keySub in params[key]) {
+				let paramSelect = params[key][keySub];
+				let paramEl = option[key];
+				if (paramSelect === paramEl) filterCheckNum++;
+			}
+
+			if (paramsLength === filterCheckNum) $self.removeClass(w.Fit.class.hideCalendarItem);
+			else $self.addClass(w.Fit.class.hideCalendarItem);
+		});
+		$calBody.find('tr').each(function (key, item) {
+			let $self = $(item), $calItems = $self.find('[data-option-filter]');
+			if ($calItems.filter(':not(.' + w.Fit.class.hideCalendarItem + ')').length === 0) $self.hide();
+			else $self.show();
+		});
+
+		$calBlock.removeClass(w.Fit.loading.name);
+	}
+
+	/** Update filter */
+	f.updFilter = function (filter) {
+		//let _this = this;
+
+		if (typeof filter.employee === 'undefined') return;
+		let $filterEmployee = $('[data-employee]');
+		$filterEmployee.each(function (i, item) {
+			let $selfItem = $(item),
+				option = $selfItem.data('filter-option'), show = false;
+			filter.employee.forEach(function (id) {
+				if (option.id === id) show = true;
+			});
+
+			if (show === true) {
+				$selfItem.show();
+				$selfItem.parent().find('#' + $selfItem.attr('for')).prop('disabled', false);
+			} else {
+				$selfItem.hide();
+				$selfItem.parent().find('#' + $selfItem.attr('for')).prop('disabled', true);
+			}
+		});
+	}
+	/** Old func */
+	f.getCalendarData = function (data, calendarType) {
+		let _this = this;
+
+		if (!calendarType) calendarType = '';
+
+		let $calBlock = $('.in-block-sched'), params = data;
+
+		params.token = _this.getUserToken();
+		params.calendarType = calendarType;
+		params.show_type = _this.body.find('[data-show-type].active').data('show-type');
+		params.getAll = 'Y';
+		params.window_width = $(w).width();
+
+		if (!params.salonId && $(w.Fit.block.calendarContent).find('[name="club"]').length)
+			params.salonId = $(w.Fit.block.calendarContent).find('[name="club"]').val();
+
+		$calBlock.addClass(w.Fit.loading.name);
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getFitCalendar', params: params}, function (response) {
+			if (response.arUser) {
+				$(w.Fit.block.head.user_name).removeClass(w.Fit.class.hide).html(response.arUser.FIO_relatives);
+				$(w.Fit.block.head.user_name).find('select').selectbox();
+				_this.setEventChangeRelatives();
+				$(w.Fit.block.head.user_logout).removeClass(w.Fit.class.hide);
+			}
+
+			$(w.Fit.block.calendarContent).html(response.SLIDER.ALL_BLOCK);
+			$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+
+			$(w.Fit.block.calendarContent).find('[data-get-calendar-type]').on('click', function () {
+				let $self = $(this);
+				let salonId = '';
+
+				_this.getCalendar(salonId, $self.data('get-calendar-type'));
+			});
+
+			_this.setCalendarSelectEvent(calendarType);
+			_this.setCalendarSelectPersonalEvent(calendarType);
+
+			_this.renderSlider();
+			_this.resizeSched();
+			_this.showSetApp();
+
+			$(w).trigger('scroll');
+		});
+	}
+
+	/** render calendar slider */
+	f.renderSlider = function () {
+		let _this = this;
+
+		_this.setMobileAdaptive();
+		try {
+			w.Fit.sliderTitle = $(_this.calendar.date + ' .sl-date').bxSlider({
+				minSlides: 1, maxSlides: 1, slideMargin: 1, moveSlides: 1,
+				controls: true, pager: false, hideControlOnEnd: true, infiniteLoop: false, adaptiveHeight: true
+			});
+
+			w.Fit.sliderContent = $(_this.calendar.body + ' .slider-body').bxSlider({
+				minSlides: 1, maxSlides: 1, slideMargin: 1, moveSlides: 1,
+				controls: true, adaptiveHeight: true, pager: false, hideControlOnEnd: true, infiniteLoop: false,
+				onSlideAfter: function (currentSlideNumber, totalSlideQty, currentSlideHtmlObject) {
+					$(_this.calendar.body + ' .slider-body [data-slide]').removeClass('active-slide');
+					let $activeSlide = $(_this.calendar.body + ' .slider-body [data-slide]').eq(currentSlideHtmlObject);
+					$activeSlide.addClass('active-slide');
+					if ($activeSlide.find('[data-date].active').length) $activeSlide.find('[data-date].active').click();
+					else $activeSlide.find('[data-date]:first-child').click();
+				},
+				onSliderLoad: function () {
+					$(_this.calendar.body + ' .slider-body [data-slide]').eq(0).addClass('active-slide');
+					$(_this.calendar.body + ' .slider-body [data-slide]').eq(0).find('[data-date]:first-child,[data-room]:first-child').click();
+				},
+			});
+
+			let $slideTrainer = $(_this.calendar.filter + ' .sl-trainer_rz'), indexSlide = $slideTrainer.find('.selected:not(.slick-cloned)').index();
+			w.Fit.sliderTrainer = $slideTrainer.slick({
+				TouchMove: true, infinite: true, swipeToSlide: true,
+				slidesToShow: 4, slidesToScroll: 1,
+				responsive: [{breakpoint: 600, settings: {slidesToShow: 3, slidesToScroll: 1}}, {breakpoint: 400, settings: {slidesToShow: 2, slidesToScroll: 1}}]
+			});
+			$slideTrainer.slick('slickSetOption', 'speed', 0, true).slick('slickGoTo', indexSlide - ($slideTrainer.slick('slickGetOption', 'slidesToShow') - 1)).slick('slickSetOption', 'speed', 300, true);
+		} catch (e) {
+		}
+		$(_this.calendar.date + ' .bx-wrapper .bx-prev').on('click', function () { $(_this.calendar.body + ' .bx-wrapper .bx-prev').click(); });
+		$(_this.calendar.date + ' .bx-wrapper .bx-next').on('click', function () { $(_this.calendar.body + ' .bx-wrapper .bx-next').click(); });
+
+		$('[data-slider-date] .slide').css({display: 'block'});
+
+		//scroll block
+		let $topPos = $('.floating');
+		if ($topPos.length > 0) {
+			let topPos = $topPos.offset().top;
+			$(w).scroll(function () {
+				let top = _this.body.scrollTop(), pip = 0, height = $topPos.outerHeight(), $linkWorkRes = $('.link-work_res');
+				if ($linkWorkRes.length > 0) pip = $linkWorkRes.offset().top;
+				else return;
+
+				if (top > topPos && top < pip - height) $topPos.addClass('fixed_fit').fadeIn();
+				else if (top > pip - height) $topPos.fadeOut(100);
+				else $topPos.removeClass('fixed_fit');
+			});
+		}
+	}
+	/** Event resize sched */
+	f.resizeSched = function () {
+		setTimeout(function () {
+			let win_win = $(w).width();
+			let $w_sched = $('[data-fit1c-calendar] .block-sched');
+			if ($w_sched.length) {
+				$('.nav-schedule').css({width: $w_sched.width()});
+				if (win_win > 990) {
+					setTimeout(function () {
+						$('[data-fit1c-calendar] .block-sched td, [data-fit1c-calendar] .block-sched th').css({width: ($w_sched.width() - 110) / 7})
+						$('.sl-date .slide, .slider-body .slide').css({width: $w_sched.width()})
+					}, 70);
+				}
+				if (win_win < 990) $w_sched.css({width: win_win - 20});
+			}
+		}, 100);
+	}
+	f.setCalendarSelectPersonalEvent = function (calendarType) {
+		let _this = this;
+
+		_this.$formFilter.on('change', 'input[type="radio"]', function () {
+			let $self = $(this), $parent = $self.closest('[data-title]'), $inputs = $parent.find('input:not(checked)');
+			$inputs.each(function () {
+				if (this.value !== $self.val()) $(this).prop("checked", false).prev('label').removeClass('active');
+			});
+			$self.prev('label').addClass('active');
+			_this.getCalendarData($(this).parents('form').serializeObject(), calendarType);
+		});
+		$('[data-app-trainers]').on('click', '[data-id]', function () {
+			let $self = $(this), $form = $self.closest('form'), $inputAppTrainer = $form.find('[name="employee_id"]'), id = $self.data('id');
+			$inputAppTrainer.val(id);
+			_this.getCalendarData($form.serializeObject(), calendarType);
+		});
+		$('[data-app-rooms],[data-app-visit-room]').on('click', '[data-id]', function () {
+			let $self = $(this), $form = $self.closest('form'), $inputAppRoom = $form.find('[name="room_id"]'), id = $self.data('id');
+			$inputAppRoom.val(id);
+			_this.getCalendarData($form.serializeObject(), calendarType);
+		});
+	}
+	f.setCalendarSelectEvent = function (calendarType) {
+		let _this = this;
+
+		_this.setCalendarFilterEvent();
+
+		_this.body.off('click.show-type').on('click.show-type', '[data-show-type]', function () {
+			let $self = $(this);
+			$('[data-show-type]').removeClass('active');
+			$self.addClass('active');
+
+			_this.getCalendarData({
+				show_type: $self.data('show-type'),
+				salonId: $('[data-select-club]').val(),
+			}, $('[data-get-calendar-type].active_rz').data('get-calendar-type'));
+		});
+
+		$(w.Fit.block.calendarContent).find('[data-select-club]').parent().on('change', function () {
+			let $self = $(this);
+
+			_this.getCalendar($self.val(), calendarType);
+		});
+
+		_this.body.off('change.select-day').on('change.select-day', '[data-select-day]', function () {
+			let $self = $(this), $form = $self.closest('form'),data = $form.serializeObject();
+
+			_this.getCalendarData({
+				filter_day: data.filter_day, service_id: data.service_id,
+				show_type: $('[data-show-type].active').data('show-type'), salonId: $('[data-select-club]').val(),
+			}, calendarType);
+		});
+
+		if ($.fn.selectbox) $(w.Fit.block.calendarContent).find('select').selectbox();
+
+		_this.body.on('click',w.Fit.block.calendarContent, function (event) {
+			if ($(event.target).closest('.select-nav').length) return;
+			$('.die-sel').hide();
+			$('.c-hamburger').removeClass('is-active');
+			event.stopPropagation();
+		});
+		$('.select-nav').on('click', function () {
+			$(this).siblings().find('.die-sel').hide();
+			$(this).siblings().find('.c-hamburger').removeClass('is-active');
+		});
+		let $filterItem = $('.wr-hamb, .item-sel');
+		$filterItem.on('click', function () {
+			let $parent = $(this).parent();
+			$parent.find('.c-hamburger').toggleClass('is-active');
+			_this.scrollDestroy();
+			$parent.find('.die-sel').toggle();
+			_this.scrollInitialise();
+		});
+		$filterItem = $('[data-time-all],[data-service-all],[data-employee-all],[data-type_group-all],[data-room-all]');
+		$filterItem.on('click', function () {
+			let $parent = $(this).closest('[data-title]');
+			if ($parent.find('.c-hamburger').hasClass('is-active')) {
+				let $inputs = $parent.find('.in-die input:checked');
+				$inputs.each(function () { $(this).prop("checked", false).prev('label').removeClass('active'); });
+				if ($inputs.length > 0) $($inputs[0]).trigger('change');
+			}
+			$parent.find('.c-hamburger').toggleClass('is-active');
+			_this.scrollDestroy();
+			$parent.find('.die-sel').toggle();
+			_this.scrollInitialise();
+		});
+		_this.$formFilter = $(_this.calendar.filter);
+
+		$('.in-die input').on('change', function () {
+			let checked = $(this).is(':checked');
+			if (checked) $(this).prev('label').addClass('active');
+			else $(this).prev('label').removeClass('active');
+			_this.$formFilter.find('.select-nav').each(function () {
+				let selectNav = $(this), titleSelect = [];
+				selectNav.find('label.active').each(function () {
+					let label = $(this), option = label.data('filter-option');
+					titleSelect.push(option.title);
+				});
+				if (titleSelect.length > 0) selectNav.find('.item-sel').html(titleSelect.join(', '));
+				else selectNav.find('.item-sel').html(selectNav.data('title'));
+			});
+		});
+	}
+	/** add scroll */
+	f.scrollInitialise = function () {
+		let _this = this;
+
+		$(_this.calendar.scroll).each(function () {
+			_this.jScrollPaneApi.push($(this).jScrollPane().data().jsp);
+		});
+	}
+	/** remove scroll */
+	f.scrollDestroy = function () {
+		let _this = this;
+
+		if (_this.jScrollPaneApi !== null && _this.jScrollPaneApi.length) {
+			$.each(_this.jScrollPaneApi, function () {
+				this.destroy();
+			});
+			_this.jScrollPaneApi = [];
+		}
+	}
+	/** Set pagination detail APP */
+	f.paginationSet = function () {
+		//let _this = this;
+
+		//region Включаем пагинацию у детальной формы выбранного занятия
+		let $pagination = $('.app-comments');
+		$('[data-pagen-comtent]').show();
+		$pagination.each(function () {
+			let $self = $(this);
+			$self.find('.nav-title span').unbind().on('click', function () {
+				$self.find('.nav-title span').removeClass('active');
+				$self.find('.nav-content > div').hide();
+				$self.find('.nav-content [rel="' + $(this).attr('id') + '"]').show();
+				$(this).addClass('active');
+			});
+			$self.find('.nav-title span:eq(0)').trigger('click');
+		});
+		$pagination.find('.nav-title span').on('click', function () {
+			// $.colorbox.resize();
+		});
+		//endregion
+	}
+	/** set mobile adaptive */
+	f.setMobileAdaptive = function () {
+		let _this = this;
+
+		$(_this.calendar.body).find('[data-slider-prev]').unbind().on('click', function () {
+			$(_this.calendar.body).find('.bx-wrapper .bx-prev').click();
+			_this.setCalendarToday();
+		});
+		$(_this.calendar.body).find('[data-slider-next]').on('click', function () {
+			$(_this.calendar.body).find('.bx-wrapper .bx-next').click();
+		});
+		_this.setEventMobileChangeDay('date');
+		_this.setEventMobileChangeDay('room');
+
+		_this.setCalendarToday();
+	}
+	f.setCalendarToday = function () {
+		let _this = this;
+		setTimeout(function () {
+			$(_this.calendar.body).find('[data-mobile-day] [data-date][data-active="Y"]:visible').trigger('click');
+			$(_this.calendar.body).find('[data-mobile-day] [data-room][data-active="Y"]:visible').trigger('click');
+		}, 500);
+	}
+	/** checked price app */
+	f.closePop = function (all) {
+		if (!all) all = false;
+		FancyboxFit.close(all)
+		// let saveDuration = $.fancyboxFit.defaults.animationDuration;
+		// $.fancyboxFit.defaults.animationDuration = 0;
+		// $.fancyboxFit.close(all);
+		// $.fancyboxFit.defaults.animationDuration = saveDuration;
+	}
+	f.setCheckedPrice = function () {
+		let _this = this;
+
+		$('[data-pay-back]').on('click', function () {
+			let $self = $(this), $parentForm = $self.closest('form'),
+				$priceBlock = $parentForm.find('[data-ticket-list]'), $depositBlock = $parentForm.find('[data-deposit-list]');
+			$priceBlock.removeClass(w.Fit.class.hide);
+			$depositBlock.addClass(w.Fit.class.hide);
+		});
+
+		_this.body.off('click.data-ticket').on('click.data-ticket', '[data-ticket-list] [data-ticket]', function () {
+			let $self = $(this), $parentForm = $self.closest('form'), params = $self.data('options');
+
+			$parentForm.addClass(w.Fit.loading.name);
+
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+				method: 'getCartCost',
+				params: {
+					token: _this.getUserToken(),
+					id: params.id, count: params.count, AppID: params.AppID, AppType: params.AppType,
+					club_id: params.SalonID, employee_id: params.employee_id, start_date: params.start_date
+				},
+			}, function (response) {
+				$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+				_this.showMessageBlock({response: response, type: 'html'});
+				_this.eventSetPay();
+			});
+
+			return false;
+		});
+
+		$('[data-ticket-list] [data-service-ticket]').on('click', function () {
+			let $self = $(this), $parentForm = $self.closest('form'),
+				params = $self.data('options');
+
+			$parentForm.addClass(w.Fit.loading.name);
+
+			if (params.cycle_periods_choice_required) {
+				w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {
+					method: 'getAppSectionCyclePeriods',
+					params: {
+						token: _this.getUserToken(),
+						id: params.id, type: params.type, cycle_id: params.cycle_id, course_id: params.course_id, employee_id: params.employee_id,
+						club_id: params.club_id
+					},
+				}, function (response) {
+					$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+
+					$parentForm.html(response.Message);
+					$parentForm.find('select').selectbox();
+
+					$parentForm.find('[data-pay-and-buy-service]').on('click', function () {
+						let params = $parentForm.serializeObject();
+						$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+						_this.getCartCostSection({
+							token: _this.getUserToken(), AppType: 'service',
+							id: params.id, type: params.type, cycle_id: params.cycle_id, course_id: params.course_id, employee_id: params.employee_id,
+							club_id: params.club_id, cycle_period_id: params.cycle_period_id
+						});
+
+						return false;
+					});
+				});
+			} else {
+				$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+				_this.getCartCostSection({
+					token: _this.getUserToken(), AppType: 'service',
+					id: params.id, type: params.type, course_id: params.course_id,
+					club_id: params.club_id,
+				});
+			}
+
+			return false;
+		});
+
+	}
+
+	f.getCartCostSection = function (params) {
+		let _this = this;
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getCartCost', params: params,}, function (response) {
+			$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+			_this.showMessageBlock({response: response, type: 'html', afterShowFunction: null, hideOther: 'Y'});
+			_this.eventSetPay();
+		});
+	}
+	//endregion
+
+	//region TODO Auth Pay From
+	f.getAuthPayFormEvent = function () {
+		let _this = this;
+
+		$('[data-show-auth-pay-form]').on('click', function () {
+			let $self = $(this), id = $self.data('id'), club_id = $self.data('club_id');
+
+			_this.sendAuthPayFormEvent({id: id, club_id: club_id});
+		});
+	}
+	f.sendAuthPayFormEvent = function (params, updateForm) {
+		let _this = this;
+
+		params.token = _this.getUserToken();
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getAuthPayForm', params: params}, function (response) {
+			if (updateForm === 'Y') $('[data-update-block]:first-child').html(response.Message);
+			else _this.showMessageBlock({response: response, type: 'html'});
+
+			_this.setMaskOptions(response.mask);
+			_this.setMask();
+			_this.setAuthPayFormEvent();
+			_this.eventSetPay();
+		});
+	}
+	f.setAuthPayFormEvent = function () {
+		let _this = this;
+
+		let $regPayForm = $('[data-auth-pay-form]');
+
+		$regPayForm.unbind().on('submit', function () {
+			let $selfForm = $(this),
+				$name = $selfForm.find('[data-input-name]'), $email = $selfForm.find('[data-input-email]'), $phone = $selfForm.find('[data-input-phone]'), $pass = $selfForm.find('[data-input-pass]'),
+				arInput = {name: $name, phone: $phone,},
+				isError = false;
+
+			if ($regPayForm.find('[name="isAuth"]').val() === 'Y') arInput = {phone: $phone, pass: $pass,};
+
+			$.each(arInput, function (key, $val) {
+				if ($val.val() === '') {
+					isError = true;
+					$val.addClass('error');
+				} else $val.removeClass('error');
+			});
+			$email.val($email.val().trim());
+
+			if ($regPayForm.find('[name="isAuth"]').val() !== 'Y') {
+				if (($email.val() === '' || !isMail($email.val()))) {
+					isError = true;
+					$email.addClass('error');
+				} else $email.removeClass('error');
+			}
+
+			if (isError) return false;
+
+			let data = $regPayForm.serializeObject();
+			data.origin = w.location.origin;
+			data.pathname = w.location.pathname;
+			data.email = $email.val();
+
+			data = _this.getAppendUtm(data);
+
+			$regPayForm.addClass(w.Fit.loading.name);
+			w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setAuthPayForm', params: data}, function (response) {
+				$regPayForm.addClass(w.Fit.loading.name);
+				if (response.isError) {
+					_this.showMessageBlock({response: response, type: 'html', afterShowFunction: null, hideOther: 'N'});
+				} else {
+					_this.setUserToken(response.user_token);
+					_this.setUserId(response.user_id);
+
+					_this.extractSetPayResultResponse($selfForm, response);
+				}
+			});
+
+			return false;
+		});
+	}
+	f.getAppendUtm = function (data) {
+		data.utm = {};
+		if (!$.isEmptyObject(w.Fit.utm)) data.utm = w.Fit.utm;
+		forEach(f.Cookie.getAll(), function (val, name) {
+			if (name.match(/fit_utm_/) || name.match(/_ym_uid/) || name.match(/_ct_session_id/) || name === '_ga' || name === '_fbp' || name === '_fbc') {
+				data.utm[name.replace(/fit_/, '')] = val;
+			}
+		});
+		forEach(f.Tools.getQueryString(), function (val, name) { if (name.match(/utm_/)) data.utm[name.replace(/fit_/, '')] = val; });
+
+		return data;
+	}
+	//endregion
+	//region TODO Reg Pay From
+	f.getRegPayFormEvent = function () {
+		let _this = this;
+
+		$('[data-show-reg-pay-form]').on('click', function () {
+			let $self = $(this), id = $self.data('id'), club_id = $self.data('club_id');
+
+			_this.sendRegPayFormEvent({id: id, club_id: club_id});
+		});
+	}
+	f.sendRegPayFormEvent = function (params, updateForm) {
+		let _this = this;
+
+		params.token = _this.getUserToken();
+
+		w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'getRegPayForm', params: params}, function (response) {
+			if (updateForm === 'Y') $('[data-update-block]:first-child').html(response.Message); else _this.showMessageBlock({response: response, type: 'html'});
+			_this.setMaskOptions(response.mask);
+			_this.setMask();
+			_this.setRegPayFormEvent();
+			if (_this.getUserToken()) _this.eventSetPay();
+		});
+	}
+	f.setRegPayFormEvent = function () {
+		let _this = this;
+		let $regPayForm = $('[data-reg-pay-form]'), $sendSmsForm = $regPayForm.find('[data-sms-send]'), $checkSmsForm = $regPayForm.find('[data-sms-check]');
+
+		$regPayForm.find('[data-show-auth-field]').on('click', function () {
+			$('[name="isAuth"]').val('Y');
+			$('[data-reg-input-block]').addClass(w.Fit.class.hide);
+			$('[data-auth-input-block]').removeClass(w.Fit.class.hide);
+			$('[data-show-reg-field]').closest('[data-block]').removeClass(w.Fit.class.hide);
+			$('[data-show-auth-field]').closest('[data-block]').addClass(w.Fit.class.hide);
+		});
+		$regPayForm.find('[data-show-reg-field]').on('click', function () {
+			$('[name="isAuth"]').val('');
+			$('[data-reg-input-block]').removeClass(w.Fit.class.hide);
+			$('[data-auth-input-block]').addClass(w.Fit.class.hide);
+			$('[data-show-reg-field]').closest('[data-block]').addClass(w.Fit.class.hide);
+			$('[data-show-auth-field]').closest('[data-block]').removeClass(w.Fit.class.hide);
+		});
+		$sendSmsForm.find('[data-input-phone]').on('keyup', function () {
+			if ($regPayForm.find('[name="isAuth"]').val() !== 'Y') _this.checkRegFormPhone(this.value, $regPayForm);
+		});
+		$regPayForm.find('[data-sms-send-button]').on('click', function () {
+			if ($regPayForm.find('[name="isAuth"]').val() !== 'Y') {
+				$regPayForm.find('[data-sms-send-button]').closest('[data-button]').addClass(w.Fit.class.hide);
+				$checkSmsForm.find('[data-input]').removeClass(w.Fit.class.hide);
+				_this.checkRegFormPhone($sendSmsForm.find('[data-input-phone]').val(), $regPayForm);
+			}
+			return false;
+		});
+		$regPayForm.find('[data-submit-promocode]').unbind().on('click', function () {
+			let $el = $(this), $form = $el.closest('form'), data = $form.serializeObject();
+
+			_this.sendRegPayFormEvent({promocode: data.promocode, count: data.count, id: data.id, club_id: data.club_id,}, 'Y');
+			return false;
+		});
+		$checkSmsForm.find('[data-sms-mess-retry]').on('click', function () {
+			if ($regPayForm.find('[name="isAuth"]').val() !== 'Y') {
+				_this.checkRegFormPhone($sendSmsForm.find('[data-input-phone]').val(), $regPayForm);
+			}
+		});
+		$regPayForm.unbind().on('submit', function () {
+			let $selfForm = $(this),
+				$name = $selfForm.find('[data-input-name]'),
+				$email = $selfForm.find('[data-input-email]'),
+				$phone = $selfForm.find('[data-input-phone]'),
+				$code = $selfForm.find('[data-input-captcha-sms]'),
+				$pass = $selfForm.find('[data-input-pass]'),
+				arInput = {name: $name, phone: $phone, code: $code,},
+				isError = false;
+
+			if ($regPayForm.find('[name="isAuth"]').val() === 'Y') arInput = {phone: $phone, pass: $pass,};
+			$.each(arInput, function (key, $val) {
+				if ($val.length > 0 && $val.val() === '') {
+					isError = true;
+					$val.addClass('error');
+				} else $val.removeClass('error');
+			});
+
+			if ($regPayForm.find('[name="isAuth"]').val() !== 'Y') {
+				$email.val($email.val().trim());
+				if ($email.length > 0 && ($email.val() === '' || !isMail($email.val()))) {
+					isError = true;
+					$email.addClass('error');
+				} else $email.removeClass('error');
+			}
+
+			if (isError) return false;
+			let data = $regPayForm.serializeObject();
+			data.origin = w.location.origin;
+			data.pathname = w.location.pathname;
+			data.email = $email.val();
+
+			data = _this.getAppendUtm(data);
+
+			if ($regPayForm.find('[name="isAuth"]').val() !== 'Y') {
+				if (!data.code) return false;
+				$regPayForm.addClass(w.Fit.loading.name)
+				w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'checkRegPayCodeAndPay', params: data}, function (response) {
+					$regPayForm.removeClass(w.Fit.loading.name)
+					if (response.isError) _this.showMessageBlock({response: response, type: null, afterShowFunction: null, hideOther: 'N'});
+					else {
+						_this.setUserToken(response.user_token);
+						_this.setUserId(response.user_id);
+						w.dataLayer.push({'event': 'form_submit', 'formName': 'order'});
+
+						if (['sber', 'alfa', 'sber_kaz', 'tinkoff', 'paytabs', 'liqpay', 'bepaid', 'paykeeper'].indexOf(response.method) > -1 && response.arData.formUrl) {
+							if (response.arData && response.arData.formUrl) w.location.href = response.arData.formUrl;
+						} else if (response.method === 'paymo') {
+							_this.showMessageBlock({
+									response: {Message: '<div><div id="' + response.dataPay.params.parent_id + '"></div></div>'}, type: 'nopadding', afterShowFunction: function () {
+										if (typeof PaymoFrame === 'undefined') {
+											w.Fit.getJs(response.dataPay.scriptUrl);
+											setTimeout(function () { PaymoFrame.set(response.dataPay.params);}, 500);
+										} else {
+											PaymoFrame.set(response.dataPay.params);
+										}
+									}
+								}
+							);
+						} else if (response.method === 'cloudpayments' && response.dataPay) {
+							if (typeof cp === 'undefined') {
+								$.getScript(response.dataPay.scriptUrl, function () { _this.getCpPay(response); });
+							} else _this.getCpPay(response);
+							_this.closePop(true);
+						} else if (response.dataPay) {
+						}
+					}
+				});
+			} else {
+				$regPayForm.addClass(w.Fit.loading.name)
+				w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'auth', params: data}, function (response) {
+					$regPayForm.removeClass(w.Fit.loading.name)
+					if (response.isError) _this.showMessageBlock({response: response, type: 'html', afterShowFunction: null, hideOther: 'N'});
+					else {
+						w.dataLayer.push({'event': 'form_submit', 'formName': 'auth'});
+						_this.setUserToken(response.token);
+						_this.setUserId(response.userF.id);
+						_this.sendRegPayFormEvent({id: data.id, club_id: data.club_id}, 'Y');
+					}
+				});
+			}
+			return false;
+		});
+	}
+	f.checkRegFormPhone = function (phone, $regPayForm) {
+		let _this = this;
+		let $checkSmsForm = $regPayForm.find('[data-sms-check]'),
+			$smsTimeError = $checkSmsForm.find('[data-sms-mess-error]'),
+			$smsTimeSuccess = $checkSmsForm.find('[data-sms-mess-success]'),
+			$smsTimeRetry = $checkSmsForm.find('[data-sms-mess-retry]');
+
+		let timeSmsSend = f.Cookie.get('timeSmsSend');
+		if (!timeSmsSend) timeSmsSend = _this.Tools.getTimeStamp();
+
+		$smsTimeRetry.addClass(w.Fit.class.hide);
+		if (phone.match(/_/i)) {
+			$checkSmsForm.addClass(w.Fit.class.hide);
+			$smsTimeError.addClass(w.Fit.class.hide);
+			$smsTimeSuccess.addClass(w.Fit.class.hide);
+		} else {
+			if (!$checkSmsForm.filter(':visible').length) {
+				$checkSmsForm.removeClass(w.Fit.class.hide);
+				$checkSmsForm.find('[data-input]').removeClass(w.Fit.class.hide);
+				return;
+			}
+			if (timeSmsSend - _this.Tools.getTimeStamp() <= 0) {
+				w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'sendRegCode', params: {'login': phone,}}, function () {
+						$smsTimeError.removeClass(w.Fit.class.hide);
+						$smsTimeSuccess.removeClass(w.Fit.class.hide);
+						timeSmsSend = _this.Tools.getTimeStamp() + 5;
+						_this.Cookie.set('timeSmsSend', timeSmsSend);
+						$checkSmsForm.find('[data-input-captcha-sms]').focus();
+					}
+				);
+			} else {
+				console.log('Not send ' + (timeSmsSend - _this.Tools.getTimeStamp()));
+			}
+
+			//region TODO TimeSend
+			clearInterval(_this.timerSendSms);
+			_this.timerSendSms = setInterval(function () {
+				if (timeSmsSend - _this.Tools.getTimeStamp() < 0) {
+					$smsTimeRetry.removeClass(w.Fit.class.hide);
+					$smsTimeError.addClass(w.Fit.class.hide);
+					$smsTimeSuccess.addClass(w.Fit.class.hide);
+				} else {
+					$smsTimeError.removeClass(w.Fit.class.hide)
+						.find('[data-time]')
+						.html(timeSmsSend - _this.Tools.getTimeStamp());
+				}
+			}, 100);
+			$checkSmsForm.removeClass(w.Fit.class.hide);
+			//endregion
+		}
+	}
+	//endregion
+
+
+	//region Lib
+	f.setCalendarFilterEvent = function () {
+		let _this = this;
+		_this.$formFilter = $(_this.calendar.filter);
+		_this.$formFilter.on('change', 'input[type="checkbox"]', function () {_this.setCalendarFilter($(this).parents('form'));});
+		_this.$formFilter.on('click', w.Fit.block.calendarSetButton, function () {
+			_this.setCalendarFilter($(this).parents('form'));
+			$('.die-sel').hide().closest('[data-title]').find('.c-hamburger').removeClass('is-active');
+			return false;
+		});
+	}
+	f.setShowEvents = function () {
+		let _this = this;
+		let $blockUserCabinet = $(_this.block.userCabinet);
+
+		_this.body.off('click.show-block').on('click.show-block', '[data-show-block]', function () {
+			let $self = $(this), blockId = $self.data('show-block'), $remBlock = $(blockId);
+
+			if ($remBlock.length === 0) return false;
+			if (blockId === '[data-block-remember]') {
+				$remBlock.find('[data-block-phone]').removeClass(w.Fit.class.hide);
+				$remBlock.find('[data-block-phone-confirm]').addClass(w.Fit.class.hide);
+			}
+			if (blockId === '[data-block-reg]') {
+				$remBlock.find('[data-block-phone]').removeClass(w.Fit.class.hide);
+				$remBlock.find('[data-confirm-code]').addClass(w.Fit.class.hide);
+				$remBlock.find('[data-register-fields]').addClass(w.Fit.class.hide);
+
+				if (w.Fit.arClub)
+					forEach(w.Fit.arClub, function (arItem) {
+						if (arItem.current === true && arItem.auth_message_to_user !== '')
+							$('[data-input-phone-text]').removeClass(w.Fit.class.hide).html(arItem.auth_message_to_user);
+					});
+
+				$blockUserCabinet = $(_this.block.userCabinet);
+				$blockUserCabinet.html($(blockId).html());
+				_this.setAuthEvent();
+				_this.setRegEvent();
+				_this.setAgreementEvent();
+				_this.setShowEvents();
+				_this.setMask();
+				_this.isRegister = true;
+				_this.closePop(true);
+				$(w.Fit.loading.class).removeClass(w.Fit.loading.name);
+				return false;
+			}
+			if (blockId === '[data-block-remember]') _this.closePop(true);
+
+			_this.showMessageBlock({response: blockId, type: null, afterShowFunction: clearMessages()});
+		});
+	}
+
+
+	/**
+	 * Check phone format
+	 * let sPhone string
+	 * */
+	f.isPhoneFormat = function (sPhone) { return sPhone.replace(/[^\d;]/g, ''); }
+
+	/**
+	 * Set mask
+	 * */
+	f.setMaskOptions = function (mask) {
+		if (!mask) return;
+		w.Fit.mask.rule = mask.rule;
+		w.Fit.mask.placeholder = mask.placeholder;
+		w.Fit.mask.prefix_img = mask.prefix_img;
+	}
+	f.setSelectbox = function () {
+		if ($.fn.selectbox) $('[data-set-app-form] .select-group_rz select, [data-forms]:not([data-skip-script]) .select-group_rz select').selectbox();
+	}
+	f.setMask = function () {
+		if (!$.mask) return;
+
+		$('.flags-selected_rz').unbind().click(function () { $(this).parent().toggleClass('active').next().toggle() });
+
+		if (w.Fit.mask.prefix_img) $('[data-country-flag]').attr('class', 'fl_rz ' + w.Fit.mask.prefix_img + '_rz');
+
+		$('.drop-flag_rz ul li').unbind().click(function () {
+			let $self = $(this), options = $self.data('options'), cl_add = $self.find('.fl_rz').attr('class');
+			$('.drop-flag_rz').each(function () { $(this).hide().prev().removeClass('active').find('.fl_rz').removeClass().addClass(cl_add) });
+
+			w.Fit.mask.rule = options.mask.rule;
+			w.Fit.mask.placeholder = options.mask.placeholder;
+			w.Fit.mask.prefix_img = options.mask.prefix_img;
+			$('[data-input-phone]').mask(w.Fit.mask.rule, {placeholder: w.Fit.mask.placeholder});
+		});
+
+
+		// $('select:not([data-not-select])').selectbox();
+		$('[data-input-date-mask]').unmask().mask("3n-1n-2nnn", {placeholder: w.Fit.maskSettingsRu.dateFormat});
+		$('[data-input-captcha-sms]').unmask().mask("nnnn", {placeholder: 'XXXXXX'});
+
+		//region Event
+		$('[data-show-block="[data-block-auth]"]').on('click', function () {$('[data-input-phone]').mask(w.Fit.mask.rule, {placeholder: w.Fit.mask.placeholder});});
+		$('[data-show-block="[data-block-remember]"]').on('click', function () {$('[data-input-phone]').mask(w.Fit.mask.rule, {placeholder: w.Fit.mask.placeholder});});
+		$('[data-input-phone]').mask(w.Fit.mask.rule, {placeholder: w.Fit.mask.placeholder}).on('focus', function () {
+			let $self = $(this), index = 0;
+			setTimeout(function () {
+				index = $self.val().indexOf('_');
+				if (index > 0) $self.caretTo(index);
+			}, 50)
+		});
+	}
+
+	/**
+	 * Clear All error input form
+	 * let $self $('form')
+	 * */
+	f.clearErrors = function ($self) {
+		$self.find('input').removeClass('error');
+		$self.find('.error-text,[data-error],[data-success]').empty();
+	}
+
+	/**
+	 * Clear All error message
+	 * let $self $('form')
+	 * */
+	f.clearMessages = function () {
+		$('.error-text, .message-success,[data-error],[data-success]').empty();
+		$('.error').removeClass('error');
+	}
+
+	f.showMessageBlock = function ({response, type, afterShowFunction, hideOther, afterCloseFunction}) {
+		let _this = this, typeShow, html;
+		if (typeof response === 'object') {
+			html = '<div><div class="content_rz content_rz2">';
+			if (type === 'html-empty') html = '';
+			if (type === 'html' || type === 'html-empty') html += '' + response.Message + '';
+			else html += '<div class="final-message_rz">' + response.Message + '</div></div>';
+
+			if (type !== 'html-empty') html += '</div></div>';
+			typeShow = 'html';
+		} else {
+			html = response;
+			typeShow = 'inline';
+		}
+
+		_this.FancyboxFit = new FancyboxFit([{src: html, type: typeShow,}]);
+		_this.FancyboxFit.on("done", (fancybox, slide) => {
+			console.log(type);
+
+			if (type === 'nopadding') slide.$content.style.padding = 0;
+			if (typeof afterShowFunction === 'function') afterShowFunction();
+			_this.setAuthEvent();
+			_this.setShowEvents();
+			_this.setMask();
+		});
+		_this.FancyboxFit.on("destroy", () => {
+			if (hideOther !== 'N') FancyboxFit.close(true);
+			if (typeof afterCloseFunction === 'function') afterCloseFunction();
+		});
+	}
+	f.setEventMobileChangeDay = function (item) {
+		let _this = this;
+		$(_this.calendar.body).find('[data-mobile-day] [data-' + item + ']').unbind().on('click', function () {
+			let $self = $(this), $dataTable = $(_this.calendar.body).find('[data-table]');
+			$self.parents('[data-mobile-day]').find('[data-' + item + ']').removeClass('active');
+			$self.addClass('active');
+
+			$dataTable.find('td[data-' + item + ']').addClass('none-td').removeClass('active');
+			$dataTable.find('td[data-' + item + '="' + $self.data(item) + '"]').each(function () { if ($(this).find('ul li').length > 0) $(this).removeClass('none-td').addClass('active'); });
+		});
+	}
+	f.setEventChangeRelatives = function () {
+		let _this = this;
+		$('[data-select-relatives]').on('change', function () {
+			let $self = $(this);
+			_this.setUserTokenRelatives($self.val());
+			w.location.reload();
+		});
+	}
+
+	//region User Token
+	f.setUserTokenRelatives = function (userF) {
+		this.Cookie.set('Fit.U_TOKEN', userF/*, {expires: w.Fit.cookie.time}*/);
+	}
+	f.setUserToken = function (userF) {
+		this.Cookie.set('Fit.U_TOKEN', userF/*, {expires: w.Fit.cookie.time}*/);
+		this.Cookie.set('Fit.U_TOKEN_MASTER', userF/*, {expires: w.Fit.cookie.time}*/);
+	}
+	f.setUserId = function (id) {
+		this.Cookie.set('Fit.U_ID', id, {expires: w.Fit.cookie.time});
+	}
+	f.getUserToken = function () {
+		let token = f.Cookie.get('Fit.U_TOKEN');
+		if (typeof token === 'undefined' || token === 'undefined') token = '';
+		return token;
+	}
+	f.getUserTokenMaster = function () {
+		let token = f.Cookie.get('Fit.U_TOKEN_MASTER');
+		if (typeof token === 'undefined') token = '';
+		return token;
+	}
+	f.getUserId = function () {
+		let token = f.Cookie.get('Fit.U_ID');
+		if (typeof token === 'undefined') token = '';
+		return token;
+	}
+	//endregion
+
+	f.extractSetPayResult = function ($self, response) {
+		let _this = this;
+		if (response.isError) {
+			_this.showMessageBlock({response: response});
+			$self.removeClass(w.Fit.loading.name);
+		} else _this.extractSetPayResultResponse($self, response);
+	}
+	f.extractSetPayResultResponse = function ($self, response) {
+		let _this = this;
+
+		w.dataLayer.push({'event': 'form_submit', 'formName': 'order'});
+		if (['sber', 'alfa', 'sber_kaz', 'tinkoff', 'paytabs', 'liqpay', 'bepaid', 'paykeeper', 'fiserv',].indexOf(response.method) > -1 && response.arData.formUrl) {
+			w.location.href = response.arData.formUrl;
+		} else if (response.method === 'appex') {
+			$self.parent().html(response.dataPay.htmlForm).find('#pay_mo_submit').submit();
+		} else if (response.method === 'paymo') {
+			_this.showMessageBlock({
+				response: {Message: '<div><div id="' + response.dataPay.params.parent_id + '"></div></div>'}, type: 'nopadding', afterShowFunction: function () {
+					if (typeof PaymoFrame === 'undefined') {
+						w.Fit.getJs(response.dataPay.scriptUrl);
+						setTimeout(function () {
+							PaymoFrame.set(response.dataPay.params);
+						}, 500);
+						// $.getScript(response.dataPay.scriptUrl, function () { PaymoFrame.set(response.dataPay.params); });
+					} else {
+						PaymoFrame.set(response.dataPay.params);
+					}
+				}
+			});
+		} else if (response.method === 'cloudpayments' && response.dataPay) {
+			if (typeof cp === 'undefined') {
+				$.getScript(response.dataPay.scriptUrl, function () {
+					_this.getCpPay(response);
+				});
+			} else _this.getCpPay(response);
+			_this.closePop(true);
+		} else {
+			let method = '';
+			if (response.showGroupPop === 'Y') method = 'getApp';
+			else if (response.showPersonalPop === 'Y') method = 'getAppPersonal';
+			else if (response.showRentalPop === 'Y') method = 'getAppRent';
+			if (method) {
+				_this.closePop()
+				_this.sendShowSetApp({club_id: response.club_id, appointment_id: response.AppID, rental_id: response.AppID, success_pay: 'Y', token: _this.getUserToken(),}, method);
+			} else _this.showMessageBlock({response: response});
+		}
+	}
+	f.getCpPay = function (response) {
+		let widget = new cp.CloudPayments();
+		widget.charge({ // options
+				publicId: response.dataPay.could.publicId,  //id из личного кабинета
+				description: response.dataPay.could.description, //назначение
+				amount: response.dataPay.could.amount, //сумма
+				currency: response.dataPay.could.currency, //валюта
+				invoiceId: response.dataPay.could.invoiceId, //номер заказа  (необязательно)
+				accountId: response.dataPay.could.accountId, //идентификатор плательщика (необязательно)
+				skin: response.dataPay.could.skin, //дизайн виджета
+				data: response.dataPay.could.data
+			},
+			function (options) { // success
+				console.log('success', response, options, 'successEND');
+				//действие при успешной оплате
+			},
+			function (reason, options) { // fail
+				console.log('fail', reason, options);
+				w.Fit.ajaxCall(w.Fit.ajaxFilePatch, {method: 'setOrderFail', params: {'orderId': options.invoiceId, options: options}}, function () {
+					console.log('failSend');
+				});
+				console.log('failEND');
+				//действие при неуспешной оплате
+			});
+	}
+	//endregion
+
+	//region deprecated
+	f.getQueryString = function () {
+		let key = false, res = {}, itm = null;
+		let qs = location.search.substring(1).split("&amp;").join("&");
+		// check for the key as an argument
+		if (arguments.length > 0 && arguments[0].length > 1) key = arguments[0];
+		// make a regex pattern to grab key/value
+		let pattern = /([^&=]+)=([^&]*)/g;
+		// loop the items in the query string, either
+		// find a match to the argument, or build an object
+		// with key/value pairs
+		while (itm = pattern.exec(qs)) {
+			if (key !== false && decodeURIComponent(itm[1]) === key) return decodeURIComponent(itm[2]);
+			else if (key === false) res[decodeURIComponent(itm[1])] = decodeURIComponent(itm[2]);
+		}
+		return key === false ? res : '';// '' == null
+	}
+	//endregion
+
+
+	$.fit1CApi = w.Fit1CApi;
+
+})(window, document, jQuery, window.Fit1CApi = window.Fit1CApi || {});

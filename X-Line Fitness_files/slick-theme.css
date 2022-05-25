@@ -1,0 +1,26 @@
+.content_rz .slick-slider{position:relative;display:block;box-sizing:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;-khtml-user-select:none;-ms-touch-action:pan-y;touch-action:pan-y;-webkit-tap-highlight-color:transparent}
+.content_rz .slick-list{position:relative;display:block;overflow:hidden;margin:0;padding:0}
+.content_rz .slick-list:focus{outline:0}
+.content_rz .slick-list.dragging{cursor:pointer;cursor:pointer}
+.content_rz .slick-slider .slick-track,.content_rz .slick-slider .slick-list{-webkit-transform:translate3d(0,0,0);-moz-transform:translate3d(0,0,0);-ms-transform:translate3d(0,0,0);-o-transform:translate3d(0,0,0);transform:translate3d(0,0,0)}
+.content_rz .slick-track{position:relative;top:0;left:0;display:block;margin-left:auto;margin-right:auto;padding-bottom:0}
+.content_rz .slick-track:before,.content_rz .slick-track:after{display:table;content:''}
+.content_rz .slick-track:after{clear:both}
+.content_rz .slick-loading .slick-track{visibility:hidden}
+.content_rz .slick-slide{display:none;float:left;min-height:1px}
+.content_rz .slick-slide img{display:block}
+.content_rz .slick-slide.slick-loading img{display:none}
+.content_rz .slick-slide.dragging img{pointer-events:none}
+.content_rz .slick-initialized .slick-slide{display:block}
+.content_rz .slick-loading .slick-slide{visibility:hidden}
+.content_rz .slick-vertical .slick-slide{display:block;height:auto;border:1px solid transparent}
+.content_rz .slick-arrow.slick-hidden{display:none}
+.content_rz .slick-dotted.slick-slider{padding-bottom:0}
+.content_rz .slick-dots{position:absolute; left:50%;bottom:175px;z-index:80;display:block;width:1000px;padding:0;margin:0 0 0 -500px;list-style:none;text-align: left}
+.content_rz .slick-dots li{position:relative;display:inline-block;width:10px;height:10px;margin:0 0 0 20px;padding:0;cursor:pointer}
+.content_rz .slick-dots li:first-child{margin-left:0}
+.content_rz .slick-dots li button{background: none; border:1px solid #fff;font-size:0;line-height:0;display:block;width:10px;height:10px;padding:0;cursor:pointer;color:transparent;outline:0;border-radius:30px;}
+.content_rz .slick-dots li.slick-active button{background:#fff}
+.content_rz .slick-dots li button:hover{background:#fff}
+.content_rz .slick-prev{position:absolute;left:-40px;top:140px;z-index:80;margin-top:0;z-index:70;border:0;background:#fff;width:0;height:57px;padding:0 0 0 31px;overflow:hidden;display:block;outline:0;cursor:pointer}
+.content_rz .slick-next{position:absolute;right:-40px;top:140px;z-index:80;margin-top:0;z-index:70;border:0;background:#fff;width:0;height:57px;padding:0 0 0 31px;overflow:hidden;display:block;outline:0;cursor:pointer}
